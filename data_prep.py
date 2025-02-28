@@ -214,7 +214,7 @@ if __name__ == "__main__":
     # Load dataset and scrape documents
     dataset = load_or_scrape_documents()
     
-    data_store = DocumentStore(
+    document_store = DocumentStore(
         collection_name="documents",
         document_content_dir="./document_content",
         embedding_model="intfloat/multilingual-e5-large",
@@ -222,6 +222,6 @@ if __name__ == "__main__":
         bm25_index_path="./bm25_index"
     )
 
-    data_store.add_documents_from_dataset(dataset)
+    document_store.add_documents_from_dataset(dataset)
 
     print("Done")

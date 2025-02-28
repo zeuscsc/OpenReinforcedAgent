@@ -62,7 +62,7 @@ def run_conversation():
 
     # First API call: Ask the model to use the function
     response = client.chat.completions.create(
-        model='/workspace/Llama-3.2-3B-Instruct',
+        model='/workspace/Qwen2.5-7B-Instruct-bnb-4bit',
         messages=messages,
         tools=tools,
         tool_choice="auto",
@@ -92,7 +92,7 @@ def run_conversation():
 
     # Second API call: Get the final response from the model
     final_response = client.chat.completions.create(
-        model='/workspace/Llama-3.2-3B-Instruct',
+        model='/workspace/Qwen2.5-7B-Instruct-bnb-4bit',
         messages=messages,
         tools=tools,
         tool_choice="auto",

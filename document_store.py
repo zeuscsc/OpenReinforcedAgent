@@ -58,7 +58,7 @@ def chunk_document(
     text: str,
     metadata: Dict[str, Any],
     tokenizer: Any,
-    max_chunk_size: int = 512
+    max_chunk_size: int = 256
 ) -> Iterator[Tuple[str, str]]:
     """Chunk document into sections with metadata-based context prefixes."""
     # Get context and its token length
@@ -108,7 +108,8 @@ class E5EmbeddingFunction(embedding_functions.EmbeddingFunction):
         self.model = SentenceTransformer(
             model_name, 
             device=device, 
-            tokenizer_kwargs={"padding": True, "truncation": True}
+            tokenizer_kwargs={"padding": True, "truncation": True},
+            cache_folder="./sentence_transformers"
         )
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
 
@@ -298,7 +299,7 @@ class DocumentStore:
         # Update dataset with only unique chunks and remove empty documents
         _dataset = _dataset.map(filter_unique_chunks, desc="Filtering unique chunks", num_proc=8)
         _dataset = _dataset.filter(lambda x: len(x['chunks']) > 0)
-
+        
         # Add unique chunks to ChromaDB
         for batch_idx in tqdm(range(0, len(_dataset), batch_size), desc="Adding chunks to ChromaDB"):
             self.collection.add(

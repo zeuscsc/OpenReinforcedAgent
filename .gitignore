@@ -38,6 +38,16 @@ chroma_db
 bm25_index
 dataset_curated
 Llama-3.2-3B-Instruct
-Llama-3.2-3B-Instruct-lora
+Llama-3.2-3B-Instruct*
 pydantic-ai
 trl
+training_outputs
+sentence_transformers
+sft_dataset
+sft_rollout
+Qwen2.5-7B-Instruct*
+dummy_dataset
+peft
+test.ipynb
+vllm-models
+unsloth*
