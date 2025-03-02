@@ -84,12 +84,19 @@ def create_lora_model(
     model.save_pretrained(output_dir)
     tokenizer.save_pretrained(output_dir)
     
+    # modify adapter config
+    with open(os.path.join(output_dir, "adapter_config.json"), "r") as f:
+        adapter_config = json.load(f)
+        adapter_config["base_model_name_or_path"] = base_model_path+"-bnb-4bit"
+    with open(os.path.join(output_dir, "adapter_config.json"), "w") as f:
+        json.dump(adapter_config, f, indent=2)
+        
     logging.info(f"LoRA model saved to {output_dir}")
     return model, tokenizer
 
 if __name__ == "__main__":
     # Create LoRA version of the model
     model, tokenizer = create_lora_model(
-        base_model_path='Qwen2.5-7B-Instruct',
-        output_dir="Qwen2.5-7B-Instruct-qlora",
+        base_model_path='/workspace/Qwen2.5-7B-Instruct',
+        output_dir="/workspace/Qwen2.5-7B-Instruct-qlora",
     )

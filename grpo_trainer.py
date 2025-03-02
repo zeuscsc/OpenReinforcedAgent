@@ -1,12 +1,27 @@
 import torch
 import transformers
-from transformers import Trainer, TrainingArguments
+from transformers import Trainer, TrainingArguments, BitsAndBytesConfig
+from peft import AutoPeftModelForCausalLM, PeftModel
 from typing import Optional, Dict, List
 from packaging import version
 from dataclasses import dataclass
 from grpo_rollout import run_llm_rollout, calculate_rewards, get_mrr, get_answer_similarity, get_format_reward
 from torch.nn import functional as F
-from utils import pad_and_truncate
+from utils import pad_and_truncate, selective_log_softmax
+from datasets import concatenate_datasets, load_from_disk
+import argparse
+import json
+import os
+import glob
+import re
+from accelerate import PartialState
+from typing import Optional, Dict, List, Any
+from accelerate.logging import get_logger
+from transformers.utils import is_peft_available
+from transformers.modeling_utils import PreTrainedModel
+import logging
+logging.basicConfig(level=logging.DEBUG)
+logger = get_logger(__name__)
 
 class GRPOTrainer(Trainer):
     def __init__(
@@ -17,16 +32,18 @@ class GRPOTrainer(Trainer):
         train_dataset=None,
         eval_dataset=None,
         beta=0.1,  # KL penalty coefficient
+        epsilon=0.01,  # Clamping coefficient
         **kwargs,
     ):
         super().__init__(model, args)
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.beta = beta
+        self.epsilon = epsilon
         self._metrics = {"completion_length": [], "kl": []}
         self._last_loaded_step = None
 
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         """
         Except the following keys in the inputs:
         - input_ids: the rollout input_ids
@@ -36,12 +53,12 @@ class GRPOTrainer(Trainer):
         """
         if return_outputs:
             raise ValueError("The RLTrainer does not support returning outputs")
-        
+        logger.info(f'learning_rate: {self._get_learning_rate()}')
         # Get inputs
         input_ids = inputs.get("input_ids").to(self.model.device)
         attention_mask = inputs.get("attention_mask").to(self.model.device)
         labels = inputs.get("labels").to(self.model.device)
-        advantages = inputs.get("advantage").to(self.model.device)
+        advantages = inputs.get("advantages").to(self.model.device)
         ref_logprobs = inputs.get("ref_logprobs").to(self.model.device)
         
         if any(x is None for x in [input_ids, attention_mask, labels, advantages, ref_logprobs]):
@@ -50,49 +67,85 @@ class GRPOTrainer(Trainer):
         # Compute logprobs for current model
         outputs = model(input_ids=input_ids, attention_mask=attention_mask)
         logits = outputs.logits
-        logprobs = F.log_softmax(logits, dim=-1)
+        # Create a mask for valid labels (not -100)
+        mask = labels.ne(-100)
+        logprobs = selective_log_softmax(logits[mask], labels[mask])
 
-        completion_mask = torch.gt(labels, -100, dtype=logprobs.dtype)
-        # Compute KL divergence (only for completion tokens)
+        # Compute approx KL divergence
         kl = torch.exp(ref_logprobs - logprobs) - (ref_logprobs - logprobs) - 1
-        kl = kl  # Ensure KL is only computed for completion tokens
 
+        coef_1 = torch.exp(logprobs - logprobs.detach())
+        coef_2 = torch.clamp(coef_1, 1-self.epsilon, 1+self.epsilon)
+        per_token_loss1 = coef_1 * advantages[mask]
+        per_token_loss2 = coef_2 * advantages[mask]
         # Compute policy loss with KL penalty
-        policy_loss = -(logprobs * advantages.unsqueeze(1) - self.beta * kl) * completion_mask
+        policy_loss = -torch.min(per_token_loss1, per_token_loss2) + self.beta * kl
         
         # Average over completion tokens only (excluding padding)
-        num_completion_tokens = completion_mask.sum()
+        num_completion_tokens = mask.float().sum()
         loss = policy_loss.sum() / (num_completion_tokens + 1e-8)
 
         # Update metrics
-        self._metrics["completion_length"].append(completion_mask.sum().item())
+        self._metrics["completion_length"].append(mask.sum().item())
         self._metrics["kl"].append((kl.sum() / num_completion_tokens).item())
 
         return loss
 
-    def log(self, logs: Dict[str, float], start_time: Optional[float] = None) -> None:
-        """Log metrics during training."""
-        metrics = {key: sum(val) / len(val) for key, val in self._metrics.items()}
-        logs.update(metrics)
-        
-        if version.parse(transformers.__version__) >= version.parse("4.47.0.dev0"):
-            super().log(logs, start_time)
-        else:
-            super().log(logs)
-            
-        self._metrics = {key: [] for key in self._metrics}
+    # turn off save embedding layer
+    # def _save(self, output_dir: Optional[str] = None, state_dict=None):
+    #         # If we are executing this function, we are the process zero, so we don't check for that.
+    #         output_dir = output_dir if output_dir is not None else self.args.output_dir
+    #         os.makedirs(output_dir, exist_ok=True)
+    #         logger.info(f"Saving model checkpoint to {output_dir}")
+
+    #         supported_classes = (PreTrainedModel,) if not is_peft_available() else (PreTrainedModel, PeftModel)
+    #         # Save a trained model and configuration using `save_pretrained()`.
+    #         # They can then be reloaded using `from_pretrained()`
+    #         if not isinstance(self.model, supported_classes):
+    #             if state_dict is None:
+    #                 state_dict = self.model.state_dict()
+
+    #             if isinstance(self.accelerator.unwrap_model(self.model), supported_classes):
+    #                 self.accelerator.unwrap_model(self.model).save_pretrained(
+    #                     output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
+    #                 )
+    #             else:
+    #                 logger.info("Trainer.model is not a `PreTrainedModel`, only saving its state dict.")
+    #                 if self.args.save_safetensors:
+    #                     safetensors.torch.save_file(
+    #                         state_dict, os.path.join(output_dir, 'model.safetensors'), metadata={"format": "pt"}
+    #                     )
+    #                 else:
+    #                     torch.save(state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
+    #         else:
+    #             self.model.save_pretrained(
+    #                 output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors, save_embedding_layer=False
+    #             )
+
+    #         if self.processing_class is not None:
+    #             self.processing_class.save_pretrained(output_dir)
+
+    #         # Good practice: save your training arguments together with the trained model
+    #         torch.save(self.args, os.path.join(output_dir, "training_args.bin"))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--current-model-path", required=True)
-    parser.add_argument("--dataset-path", required=True)
-    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--checkpoint-path", required=True, help="Path to the model directory")
+    parser.add_argument("--dataset-paths", required=True, nargs="+")
     
     args = parser.parse_args()
+
+    datasets = [load_from_disk(dataset_path) for dataset_path in args.dataset_paths]
+    # Concat datasets
+    dataset = concatenate_datasets(datasets)
     
-    dataset = load_from_disk(dataset_path)
-    logging.info("Dataset loaded successfully")
-    
+    if 'checkpoint' in args.checkpoint_path:
+        output_path = args.checkpoint_path.split('checkpoint-')[0]
+        current_step = int(args.checkpoint_path.split('checkpoint-')[1])
+    else:
+        output_path = args.checkpoint_path
+        current_step = 0
+
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
@@ -102,7 +155,7 @@ if __name__ == "__main__":
 
     # Training model (base model with LoRA)
     model = AutoPeftModelForCausalLM.from_pretrained(
-        current_model_path,
+        pretrained_model_name_or_path=args.checkpoint_path,
         is_trainable=True,
         quantization_config=bnb_config,
         attn_implementation="flash_attention_2",
@@ -114,32 +167,47 @@ if __name__ == "__main__":
     # 4. Setup training arguments
     training_args = TrainingArguments(
         per_device_train_batch_size=1,
-        gradient_accumulation_steps=8,
+        gradient_accumulation_steps=len(dataset) // 2,
+        remove_unused_columns=False,
         bf16=True,
         learning_rate=1e-4,
         num_train_epochs=1,
         weight_decay=0.01,
-        output_dir=output_dir,
+        output_dir=output_path,
         optim="adamw_8bit",
         lr_scheduler_type="cosine",
         report_to="none",
+        save_steps=1,
+        save_strategy="steps",
+        max_steps=current_step + 1
     )
 
-    # 5. Load rollout results
-    with open(rollout_results_path, 'r') as f:
-        rollout_results = json.load(f)
+    def data_collator(features: List[Dict[str, Any]]) -> Dict[str, Any]:
+        # transform to torch tensor and some reshaping
+        input_ids = torch.stack([feature["input_ids"] for feature in features], dtype=torch.long)
+        attention_mask = torch.stack([feature["attention_mask"] for feature in features],  dtype=torch.long)
+        labels = torch.stack([feature["labels"] for feature in features], dtype=torch.long)
+        advantages = torch.stack([feature["advantages"] for feature in features], dtype=torch.bfloat16)
+        ref_logprobs = torch.tensor([item for feature in feature["ref_logprobs"] for item in feature], dtype=torch.bfloat16)
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+            "advantages": advantages,
+            "ref_logprobs": ref_logprobs
+        }
 
     # 6. Initialize trainer and train
     trainer = GRPOTrainer(
-        model=training_model,
+        model=model,
         train_dataset=dataset,
+        data_collator=data_collator,
         args=training_args,
-        data_collator = lambda x: x,
     )
     
-    training_stats = trainer.train(
-        resume_from_checkpoint=checkpoint_path
-    )
-    
-    # 8. Save checkpoint
-    trainer.save_model(output_dir)
+    if 'checkpoint' in args.checkpoint_path:
+        training_stats = trainer.train(
+            resume_from_checkpoint=args.checkpoint_path
+        )
+    else:
+        training_stats = trainer.train()

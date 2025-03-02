@@ -80,14 +80,14 @@ class TrainingManager:
         except Exception as e:
             logging.error(f"Error stopping docker container: {e}")
 
-    def spawn_convert_container(self, base_model_path, current_model_path, output_path):
+    def spawn_convert_container(self, base_model_path, lora_model_path, output_path):
         """Convert a trained lora model into vllm model"""
         cmd = f"""docker run -d --name convert --rm --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
                  -v $(pwd):/workspace \
                  grpo:dev \
                  python merge_lora.py \
                  --base-model /workspace/{base_model_path} \
-                 --lora-model /workspace/{current_model_path} \
+                 --lora-model /workspace/{lora_model_path} \
                  --output-path /workspace/{output_path}"""
         
         try:
@@ -116,7 +116,7 @@ class TrainingManager:
                  --load-format bitsandbytes \
                  --gpu-memory-utilization 0.8 \
                  --port {port} \
-                 --max_model_len 8096"""
+                 --max_model_len 8192"""
         
         try:
             result = subprocess.run(cmd, shell=True, check=True, capture_output=True)
@@ -166,20 +166,17 @@ class TrainingManager:
             logging.info(f"Successfully started ref-inference container with ID: {container_id}")
             return container_id
         except subprocess.CalledProcessError as e:
-            logging.error(f"Failed to start ref-inference container: {e}")
+            logging.error(f"Failed ref-inference container {device}: {e}")
             raise
 
-    def spawn_training_container(self, current_model_path, dataset_path, output_dir, rollout_results_path, training_args_path):
+    def spawn_training_container(self, checkpoint_path, dataset_path):
         """Start training container with specified parameters"""
         cmd = f"""docker run -d --name training --rm --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
                  -v $(pwd):/workspace \
                  grpo:dev \
                  accelerate launch --num_processes=2 grpo_trainer.py \
-                 --current-model-path /workspace/{current_model_path} \
-                 --dataset-path /workspace/{dataset_path} \
-                 --output-dir /workspace/{output_dir} \
-                 --rollout-results-path /workspace/{rollout_results_path} \
-                 --training-args-path /workspace/{training_args_path}"""
+                 --checkpoint-path /workspace/{checkpoint_path} \
+                 --dataset-paths /workspace/{dataset_path}"""
         
         try:
             subprocess.run(cmd, shell=True, check=True)
@@ -265,7 +262,7 @@ class TrainingManager:
         })
 
     def train(self):
-        current_model_path = self.lora_model_path
+        lora_model_path = self.lora_model_path
         steps = 0
         # 1. Load dataset
         dataset = load_from_disk(self.dataset_path)
@@ -282,14 +279,19 @@ class TrainingManager:
                 # 2. Spawn vLLM server (reference model) on GPU 0
                 # Delete the last converted model to conserve space, except for save steps
                 if not ((steps % self.save_steps == 0 and steps != 0) or steps == self.max_steps - 1):
-                    subprocess.run(f'docker run -v $(pwd):/workspace python bash -c "rm -rf /workspace/vllm-models/vllm-{steps} || true"', shell=True, check=True)
+                    subprocess.run(f'docker run -v $(pwd):/workspace python bash -c "rm -rf /workspace/vllm-models/vllm-{steps-1} || true"', shell=True, check=True)
                 # Convert the current model into vLLM model
+                
+                current_path = os.path.join(lora_model_path, f"checkpoint-{steps}")
+                if not os.path.exists(current_path):
+                    current_path = lora_model_path
+
                 self.spawn_convert_container(
                     base_model_path=self.base_model_path,
-                    current_model_path=current_model_path,
+                    lora_model_path=current_path,
                     output_path=os.path.join('vllm-models', f"vllm-{steps}")
                 )
-
+                    
                 while True:
                     if not self.check_container_exists(container_name="convert"):
                         break
@@ -400,30 +402,33 @@ class TrainingManager:
                 logging.info("All vLLM servers stopped")
                 
                 # 5. Process rollouts
-                temp_dataset_path = os.path.join(self.output_dir, f"temp_dataset_{steps}")
                 processed_inputs = self.process_rollouts(rollout_results)
-                processed_inputs.save_to_disk(temp_dataset_path)
-                logging.info("Processed rollout results")
+                
+                for device in range(self.num_devices):
+                    device_dataset_path = os.path.join(self.output_dir, f"temp_dataset_{steps}_device_{device}_tokenized")
+                    device_dataset = processed_inputs.select(range(device*(len(processed_inputs)//self.num_devices), (device+1)*(len(processed_inputs)//self.num_devices)))
+                    device_dataset.save_to_disk(device_dataset_path)
+                    logging.info(f"Processed rollout results for device {device}")
                 
                 # 6. Run distributed inference to get reference logprobs
-                self.spawn_ref_inference_container(base_model_path=self.base_model_path_quantized, dataset_path=temp_dataset_path)
+                for device in range(self.num_devices):
+                    device_dataset_path = os.path.join(self.output_dir, f"temp_dataset_{steps}_device_{device}_tokenized")
+                    self.spawn_ref_inference_container(base_model_path=self.base_model_path_quantized, dataset_path=device_dataset_path, device=device)
+                
                 while True:
-                    if not self.check_container_exists(container_name="ref-inference"):
+                    all_completed = [not self.check_container_exists(container_name=f"ref-inference-{device}") for device in range(self.num_devices)]
+                    if all(all_completed):
                         break
-                    time.sleep(30)  # Check every 30 seconds
+                    time.sleep(10)  # Check every 10 seconds
                 logging.info("Computed reference logprobs")
 
-                return None
-                # 8. Start training container
-                checkpoint_dir = os.path.join(self.output_dir, f"checkpoint-{steps}")
+                # 7. Start training container
                 self.spawn_training_container(
-                    current_model_path=current_model_path,
-                    dataset_path=temp_dataset_path,
-                    output_dir=checkpoint_dir,
-                    training_args_path=os.path.join(self.output_dir, f"training_args_{steps}.json")
+                    checkpoint_path=current_path,
+                    dataset_paths=[os.path.join(self.output_dir, f"temp_dataset_{steps}_device_{device}_tokenized_ref_logprobs") for device in range(self.num_devices)],
                 )
                 
-                # 9. Wait for training to complete and update current model path
+                # 8. Wait for training to complete and update current model path
                 time.sleep(10)  # Give container time to start
                 while True:
                     if not self.check_container_exists(container_name="training"):
@@ -431,7 +436,6 @@ class TrainingManager:
                     time.sleep(30)  # Check every 30 seconds
 
                 steps += 1
-                current_model_path = checkpoint_dir
                 
             except Exception as e:
                 logging.error(f"Error during training: {e}")
@@ -457,7 +461,7 @@ if __name__ == "__main__":
         num_devices=2,  # Use 2 GPUs by default
         eval_steps=20,
         save_steps=20,
-        max_length=2048
+        max_length=2048,
     )
     
     manager.train()
