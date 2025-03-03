@@ -8,6 +8,7 @@ from peft import (
 import torch
 import os
 import logging
+import json
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,7 +19,8 @@ bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_quant_type="nf4",
     bnb_4bit_compute_dtype=torch.bfloat16,
-    bnb_4bit_quant_storage=torch.bfloat16
+    bnb_4bit_quant_storage=torch.uint8,
+    # bnb_4bit_quant_storage=torch.bfloat16 # needed for fsdp / ds3
 )
 
 def create_lora_model(
@@ -74,7 +76,11 @@ def create_lora_model(
     )
     
     # Get PEFT model
-    model = get_peft_model(model, lora_config, autocast_adapter_dtype=False)
+    model = get_peft_model(
+        model, 
+        lora_config, 
+        autocast_adapter_dtype=False,
+    )
     
     # Print trainable parameters
     model.print_trainable_parameters()
@@ -90,7 +96,7 @@ def create_lora_model(
         adapter_config["base_model_name_or_path"] = base_model_path+"-bnb-4bit"
     with open(os.path.join(output_dir, "adapter_config.json"), "w") as f:
         json.dump(adapter_config, f, indent=2)
-        
+
     logging.info(f"LoRA model saved to {output_dir}")
     return model, tokenizer
 

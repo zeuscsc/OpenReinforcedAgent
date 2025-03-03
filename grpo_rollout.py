@@ -307,7 +307,7 @@ def main():
     parser.add_argument('--dataset', type=str, required=True, help='Path to dataset')
     parser.add_argument('--device', type=str, default='cuda', help='Device to run on')
     parser.add_argument('--num_rollouts', type=int, default=64, help='Number of rollouts per example')
-    parser.add_argument('--model', type=str, default='/workspace/Qwen2.5-7B-Instruct-qlora-vllm', help='Path to the model')
+    parser.add_argument('--model', type=str, default='/workspace/Qwen2.5-7B-Instruct-qlora', help='Path to the model')
     parser.add_argument('--vllm_port', type=int, default=8000, help='Port to use for vLLM server')
     args = parser.parse_args()
 

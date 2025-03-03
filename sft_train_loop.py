@@ -9,7 +9,6 @@ import bitsandbytes as bnb
 from typing import List, Dict
 from accelerate import PartialState
 
-
 model_name = "Qwen2.5-7B-Instruct-qlora"
 dataset = load_from_disk("sft_dataset")
 
@@ -17,7 +16,7 @@ bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_quant_type="nf4",
     bnb_4bit_compute_dtype=torch.bfloat16,
-    bnb_4bit_quant_storage=torch.bfloat16
+    # bnb_4bit_quant_storage=torch.bfloat16 # needed for FSDP / DS3
 )
 
 model = AutoPeftModelForCausalLM.from_pretrained(

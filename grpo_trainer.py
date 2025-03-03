@@ -1,6 +1,6 @@
 import torch
 import transformers
-from transformers import Trainer, TrainingArguments, BitsAndBytesConfig
+from transformers import Trainer, TrainingArguments, BitsAndBytesConfig, TrainerCallback
 from peft import AutoPeftModelForCausalLM, PeftModel
 from typing import Optional, Dict, List
 from packaging import version
@@ -20,8 +20,13 @@ from accelerate.logging import get_logger
 from transformers.utils import is_peft_available
 from transformers.modeling_utils import PreTrainedModel
 import logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = get_logger(__name__)
+
+class StepCallback(TrainerCallback):
+    def on_step_end(self, args, state, control, **kwargs):
+        control.should_training_stop = True
+        return control
 
 class GRPOTrainer(Trainer):
     def __init__(
@@ -35,7 +40,7 @@ class GRPOTrainer(Trainer):
         epsilon=0.01,  # Clamping coefficient
         **kwargs,
     ):
-        super().__init__(model, args)
+        super().__init__(model, args, **kwargs)
         self.train_dataset = train_dataset
         self.eval_dataset = eval_dataset
         self.beta = beta
@@ -92,46 +97,47 @@ class GRPOTrainer(Trainer):
         return loss
 
     # turn off save embedding layer
-    # def _save(self, output_dir: Optional[str] = None, state_dict=None):
-    #         # If we are executing this function, we are the process zero, so we don't check for that.
-    #         output_dir = output_dir if output_dir is not None else self.args.output_dir
-    #         os.makedirs(output_dir, exist_ok=True)
-    #         logger.info(f"Saving model checkpoint to {output_dir}")
+    def _save(self, output_dir: Optional[str] = None, state_dict=None):
+            # If we are executing this function, we are the process zero, so we don't check for that.
+            output_dir = output_dir if output_dir is not None else self.args.output_dir
+            os.makedirs(output_dir, exist_ok=True)
+            logger.info(f"Saving model checkpoint to {output_dir}")
 
-    #         supported_classes = (PreTrainedModel,) if not is_peft_available() else (PreTrainedModel, PeftModel)
-    #         # Save a trained model and configuration using `save_pretrained()`.
-    #         # They can then be reloaded using `from_pretrained()`
-    #         if not isinstance(self.model, supported_classes):
-    #             if state_dict is None:
-    #                 state_dict = self.model.state_dict()
+            supported_classes = (PreTrainedModel,) if not is_peft_available() else (PreTrainedModel, PeftModel)
+            # Save a trained model and configuration using `save_pretrained()`.
+            # They can then be reloaded using `from_pretrained()`
+            if not isinstance(self.model, supported_classes):
+                if state_dict is None:
+                    state_dict = self.model.state_dict()
 
-    #             if isinstance(self.accelerator.unwrap_model(self.model), supported_classes):
-    #                 self.accelerator.unwrap_model(self.model).save_pretrained(
-    #                     output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
-    #                 )
-    #             else:
-    #                 logger.info("Trainer.model is not a `PreTrainedModel`, only saving its state dict.")
-    #                 if self.args.save_safetensors:
-    #                     safetensors.torch.save_file(
-    #                         state_dict, os.path.join(output_dir, 'model.safetensors'), metadata={"format": "pt"}
-    #                     )
-    #                 else:
-    #                     torch.save(state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
-    #         else:
-    #             self.model.save_pretrained(
-    #                 output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors, save_embedding_layer=False
-    #             )
+                if isinstance(self.accelerator.unwrap_model(self.model), supported_classes):
+                    self.accelerator.unwrap_model(self.model).save_pretrained(
+                        output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
+                    )
+                else:
+                    logger.info("Trainer.model is not a `PreTrainedModel`, only saving its state dict.")
+                    if self.args.save_safetensors:
+                        safetensors.torch.save_file(
+                            state_dict, os.path.join(output_dir, 'model.safetensors'), metadata={"format": "pt"}
+                        )
+                    else:
+                        torch.save(state_dict, os.path.join(output_dir, 'pytorch_model.bin'))
+            else:
+                self.model.save_pretrained(
+                    output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors, save_embedding_layers=False
+                )
 
-    #         if self.processing_class is not None:
-    #             self.processing_class.save_pretrained(output_dir)
+            if self.processing_class is not None:
+                self.processing_class.save_pretrained(output_dir)
 
-    #         # Good practice: save your training arguments together with the trained model
-    #         torch.save(self.args, os.path.join(output_dir, "training_args.bin"))
+            # Good practice: save your training arguments together with the trained model
+            torch.save(self.args, os.path.join(output_dir, "training_args.bin"))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint-path", required=True, help="Path to the model directory")
     parser.add_argument("--dataset-paths", required=True, nargs="+")
+    parser.add_argument("--max-steps", type=int, default=10000)
     
     args = parser.parse_args()
 
@@ -150,7 +156,8 @@ if __name__ == "__main__":
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_quant_storage=torch.bfloat16
+        bnb_4bit_quant_storage=torch.uint8,
+        # bnb_4bit_quant_storage=torch.bfloat16, # needed for FSDP / DS3
     )
 
     # Training model (base model with LoRA)
@@ -171,7 +178,6 @@ if __name__ == "__main__":
         remove_unused_columns=False,
         bf16=True,
         learning_rate=1e-4,
-        num_train_epochs=1,
         weight_decay=0.01,
         output_dir=output_path,
         optim="adamw_8bit",
@@ -179,7 +185,9 @@ if __name__ == "__main__":
         report_to="none",
         save_steps=1,
         save_strategy="steps",
-        max_steps=current_step + 1
+        max_steps=args.max_steps,
+        warmup_ratio=0.05,
+        ddp_find_unused_parameters=False
     )
 
     def data_collator(features: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -203,11 +211,23 @@ if __name__ == "__main__":
         train_dataset=dataset,
         data_collator=data_collator,
         args=training_args,
+        callbacks=[StepCallback]
     )
     
-    if 'checkpoint' in args.checkpoint_path:
-        training_stats = trainer.train(
-            resume_from_checkpoint=args.checkpoint_path
-        )
-    else:
-        training_stats = trainer.train()
+    try:
+        if 'checkpoint' in args.checkpoint_path:
+            training_stats = trainer.train(
+                resume_from_checkpoint=args.checkpoint_path,
+            )
+        else:
+            training_stats = trainer.train()
+    except Exception as e:
+        with open(os.path.join(output_path, f'training_stats_{current_step}.json'), 'w') as f:
+            json.dump({'error': str(e)}, f, indent=2)
+
+
+    # save training stats
+    with open(os.path.join(output_path, f'training_stats_{current_step}.json'), 'w') as f:
+        training_stats = training_stats._asdict()
+        training_stats.update({'learning_rate': trainer.get_learning_rates()})
+        json.dump(training_stats, f, indent=2)
