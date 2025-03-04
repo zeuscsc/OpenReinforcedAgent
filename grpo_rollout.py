@@ -48,7 +48,7 @@ def get_answer_similarity(embedding_function, condition, rollout_result):
         rollout_result (list): List of messages containing model's answer
     """
     model_answer = rollout_result[-1].get('content', None)
-    ground_truth = condition.get('ground_truth', '')
+    ground_truth = condition.get('answer', None)
     
     if model_answer is None:
         return 0.0
