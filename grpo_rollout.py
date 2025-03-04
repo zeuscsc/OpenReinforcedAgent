@@ -4,6 +4,7 @@ from datasets import load_from_disk, Dataset
 from document_store import DocumentStore, E5EmbeddingFunction
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.decomposition import PCA
 import torch
 from tqdm import tqdm
 import os
@@ -109,7 +110,7 @@ def calculate_rewards(condition, rollout_results, reward_functions, weight_schem
         rollout_results: List of dictionaries containing metric scores
         reward_functions: Dictionary of reward functions in the form {name: function(metrics_dict)}
                          where metrics_dict contains the metrics from rollout_results
-        weight_scheme: One of "uniform", "variance", or dict of {name: weight}
+        weight_scheme: One of "uniform", "std", "pca", or dict of {name: weight}
     
     Returns:
         List of reward values for each rollout
@@ -136,6 +137,27 @@ def calculate_rewards(condition, rollout_results, reward_functions, weight_schem
         weights = {
             name: np.std(rewards) / total_std
             for name, rewards in rewards_by_function.items()
+        }
+    elif weight_scheme == "pca":
+        # Convert rewards_by_function to a matrix where rows are samples and columns are features (reward functions)
+        reward_names = list(rewards_by_function.keys())
+        reward_matrix = np.column_stack([rewards_by_function[name] for name in reward_names])
+        
+        # Standardize the data (mean=0, std=1) for each feature
+        reward_matrix_std = (reward_matrix - np.mean(reward_matrix, axis=0)) / (np.std(reward_matrix, axis=0) + 1e-8)
+        
+        # Apply PCA to project to 1 dimension (maximum variance direction)
+        pca = PCA(n_components=1)
+        projected_rewards = pca.fit_transform(reward_matrix_std).flatten()
+        
+        # Use the projected values directly as rewards
+        # No need for weights since we're returning the PCA result directly
+        return {
+            "advantages": ((projected_rewards - np.mean(projected_rewards)) / (np.std(projected_rewards) + 1e-8)).tolist(),
+            "rewards": projected_rewards.tolist(),
+            "weights": {name: float(component) for name, component in zip(reward_names, pca.components_[0])},
+            "rewards_by_function": rewards_by_function,
+            "std": float(np.std(projected_rewards))
         }
     else:  # uniform
         weights = {name: 1.0/len(reward_functions) for name in reward_functions.keys()}
