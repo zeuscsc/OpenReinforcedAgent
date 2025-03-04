@@ -37,7 +37,7 @@ class GRPOTrainer(Trainer):
         train_dataset=None,
         eval_dataset=None,
         beta=0.1,  # KL penalty coefficient
-        epsilon=0.01,  # Clamping coefficient
+        epsilon=0.04,  # Clamping coefficient
         **kwargs,
     ):
         super().__init__(model, args, **kwargs)
@@ -80,12 +80,16 @@ class GRPOTrainer(Trainer):
         kl = torch.exp(ref_logprobs - logprobs) - (ref_logprobs - logprobs) - 1
 
         coef_1 = torch.exp(logprobs - logprobs.detach())
-        coef_2 = torch.clamp(coef_1, 1-self.epsilon, 1+self.epsilon)
+        ## we did not consider the case where old_logprob != logprobs (i.e. the rollout model != current model)
+        ## coef_1 will be evaluated to 1 when old_logprob == logprobs
+        # coef_2 = torch.clamp(coef_1, 1-self.epsilon, 1+self.epsilon)
         per_token_loss1 = coef_1 * advantages[mask]
-        per_token_loss2 = coef_2 * advantages[mask]
-        # Compute policy loss with KL penalty
-        policy_loss = -torch.min(per_token_loss1, per_token_loss2) + self.beta * kl
-        
+        # per_token_loss2 = coef_2 * advantages[mask]
+        ## Compute policy loss with KL penalty
+        # policy_loss = -torch.min(per_token_loss1, per_token_loss2) + self.beta * kl
+        ## negative because we want to minimize the policy loss
+        policy_loss = -per_token_loss1 + self.beta * kl
+
         # Average over completion tokens only (excluding padding)
         num_completion_tokens = mask.float().sum()
         loss = policy_loss.sum() / (num_completion_tokens + 1e-8)

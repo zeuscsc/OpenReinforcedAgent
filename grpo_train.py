@@ -460,8 +460,8 @@ if __name__ == "__main__":
         output_dir="Qwen2.5-7B-Instruct-qlora",
         max_steps=250,
         learning_rate=1e-4,
-        batch_size=4,
-        num_rollouts=4,
+        batch_size=16,
+        num_rollouts=64,
         beta=0.1,
         num_devices=2,  # Use 2 GPUs by default
         eval_steps=20,
