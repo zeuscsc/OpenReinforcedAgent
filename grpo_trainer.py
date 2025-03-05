@@ -95,8 +95,7 @@ class GRPOTrainer(Trainer):
         loss = policy_loss.sum() / (num_completion_tokens + 1e-8)
 
         # Update metrics
-        self._metrics["completion_length"].append(mask.sum().item())
-        self._metrics["kl"].append((kl.sum() / num_completion_tokens).item())
+        self._metrics['train']["kl"].append(self.accelerator.gather_for_metrics(kl).mean().item())
 
         return loss
 
@@ -193,7 +192,7 @@ if __name__ == "__main__":
         gradient_accumulation_steps=gradient_accumulation_steps,
         remove_unused_columns=False,
         bf16=True,
-        learning_rate=1e-4 / gradient_accumulation_steps,
+        learning_rate=1e-4,
         weight_decay=0.01,
         output_dir=output_path,
         optim="adamw_8bit",
