@@ -9,14 +9,14 @@ import bitsandbytes as bnb
 from typing import List, Dict
 from accelerate import PartialState
 
-model_name = "Qwen2.5-7B-Instruct-qlora"
-dataset = load_from_disk("sft_dataset")
+model_name = "/workspace/Qwen2.5-7B-Instruct-qlora"
+dataset = load_from_disk("/workspace/sft_dataset")
 
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_quant_type="nf4",
     bnb_4bit_compute_dtype=torch.bfloat16,
-    # bnb_4bit_quant_storage=torch.bfloat16 # needed for FSDP / DS3
+    bnb_4bit_quant_storage=torch.bfloat16 # needed for FSDP / DS3
 )
 
 model = AutoPeftModelForCausalLM.from_pretrained(
@@ -30,13 +30,13 @@ model = AutoPeftModelForCausalLM.from_pretrained(
 )
 
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8, mean_resizing=False)
+#model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8, mean_resizing=False)
 
 #model.gradient_checkpointing_enable()
 
 training_args = TrainingArguments(
     per_device_train_batch_size = 1,
-    gradient_accumulation_steps = 8,
+    gradient_accumulation_steps = 16,
     warmup_steps = 5,
     num_train_epochs = 3, # Set this for 1 full training run.
     learning_rate = 1e-4,
@@ -61,7 +61,7 @@ def data_collator(samples: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Ten
     
     # Get max length in this batch
     # max_length = max(len(sample["input_ids"]) for sample in samples)
-    max_length = 2048
+    max_length = 2048 + 512
     
     # Initialize tensors
     batch_size = len(samples)

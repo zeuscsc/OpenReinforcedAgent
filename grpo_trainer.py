@@ -36,8 +36,8 @@ class GRPOTrainer(Trainer):
         data_collator=None,
         train_dataset=None,
         eval_dataset=None,
-        beta=0.1,  # KL penalty coefficient
-        epsilon=0.04,  # Clamping coefficient
+        beta=0.04,  # KL penalty coefficient
+        epsilon=0.2,  # Clamping coefficient
         **kwargs,
     ):
         super().__init__(model, args, **kwargs)
@@ -160,8 +160,8 @@ if __name__ == "__main__":
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_quant_storage=torch.uint8,
-        # bnb_4bit_quant_storage=torch.bfloat16, # needed for FSDP / DS3
+        # bnb_4bit_quant_storage=torch.uint8,
+        bnb_4bit_quant_storage=torch.bfloat16, # needed for FSDP / DS3
     )
 
     # Training model (base model with LoRA)
@@ -173,6 +173,17 @@ if __name__ == "__main__":
         torch_dtype=torch.bfloat16,
         use_cache=True,
         device_map={'':PartialState().local_process_index}
+    )
+
+    from liger_kernel.transformers import apply_liger_kernel_to_qwen2
+
+    apply_liger_kernel_to_qwen2(
+        model = model.base_model.model,
+        rope = True,
+        cross_entropy = False,
+        fused_linear_cross_entropy = False,
+        rms_norm = True,
+        swiglu = True,
     )
     
     # 4. Setup training arguments
@@ -215,6 +226,8 @@ if __name__ == "__main__":
         train_dataset=dataset,
         data_collator=data_collator,
         args=training_args,
+        beta=0.04,  # KL penalty coefficient
+        epsilon=0.2,  # Clamping coefficient
         callbacks=[StepCallback]
     )
     
