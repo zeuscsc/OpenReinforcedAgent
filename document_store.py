@@ -109,7 +109,7 @@ class E5EmbeddingFunction(embedding_functions.EmbeddingFunction):
             model_name, 
             device=device, 
             tokenizer_kwargs={"padding": True, "truncation": True},
-            cache_folder="./sentence_transformers"
+            cache_folder="/workspace/sentence_transformers"
         )
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
 

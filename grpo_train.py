@@ -309,7 +309,7 @@ class TrainingManager:
                     lora_model_path=checkpoint_path,
                     output_path=os.path.join('vllm-models', f"vllm-{steps}")
                 )
-                    
+                
                 while True:
                     if not self.check_container_exists(container_name="convert"):
                         break
@@ -481,8 +481,8 @@ if __name__ == "__main__":
         output_dir="Qwen2.5-7B-Instruct-qlora",
         max_steps=250,
         learning_rate=1e-4,
-        batch_size=4,
-        num_rollouts=4,
+        batch_size=32,
+        num_rollouts=32,
         beta=0.04,
         num_devices=2,  # Use 2 GPUs by default
         eval_steps=20,

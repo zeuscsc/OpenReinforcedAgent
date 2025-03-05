@@ -186,13 +186,14 @@ if __name__ == "__main__":
         swiglu = True,
     )
     
+    gradient_accumulation_steps = len(dataset) // 2
     # 4. Setup training arguments
     training_args = TrainingArguments(
         per_device_train_batch_size=1,
-        gradient_accumulation_steps=len(dataset) // 2,
+        gradient_accumulation_steps=gradient_accumulation_steps,
         remove_unused_columns=False,
         bf16=True,
-        learning_rate=1e-4,
+        learning_rate=1e-4 / gradient_accumulation_steps,
         weight_decay=0.01,
         output_dir=output_path,
         optim="adamw_8bit",
