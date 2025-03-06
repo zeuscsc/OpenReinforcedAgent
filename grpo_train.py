@@ -192,7 +192,7 @@ class TrainingManager:
         cmd = f"""docker run -d --name training --rm --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
                  -v $(pwd):/workspace \
                  grpo:dev \
-                 accelerate launch --num_processes=2 grpo_trainer.py \
+                 accelerate launch --config_file "deepspeed_config.yaml" grpo_trainer.py \
                  --checkpoint-path /workspace/{checkpoint_path} \
                  --dataset-paths {' '.join(dataset_paths)} \
                  --max-steps {max_steps}"""
@@ -254,7 +254,7 @@ class TrainingManager:
                     _labels[index] = -100
 
             _attention_mask = [1] * len(_input_ids)
-            _advantages = [advantage] * len(_input_ids)
+            _advantages = [advantage] * (len(_input_ids) - 1) + [0.0]
 
             # left paddings and right truncations
             if len(_input_ids) >= self.max_length:

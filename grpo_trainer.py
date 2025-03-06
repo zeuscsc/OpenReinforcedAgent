@@ -45,7 +45,7 @@ class GRPOTrainer(Trainer):
         self.eval_dataset = eval_dataset
         self.beta = beta
         self.epsilon = epsilon
-        self._metrics = {"completion_length": [], "kl": []}
+        self._metrics = {"kl": [], "token-loss": []}
         self._last_loaded_step = None
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
@@ -58,7 +58,7 @@ class GRPOTrainer(Trainer):
         """
         if return_outputs:
             raise ValueError("The RLTrainer does not support returning outputs")
-        logger.info(f'learning_rate: {self._get_learning_rate()}')
+
         # Get inputs
         input_ids = inputs.get("input_ids").to(self.model.device)
         attention_mask = inputs.get("attention_mask").to(self.model.device)
@@ -95,7 +95,8 @@ class GRPOTrainer(Trainer):
         loss = policy_loss.sum() / (num_completion_tokens + 1e-8)
 
         # Update metrics
-        self._metrics['train']["kl"].append(self.accelerator.gather_for_metrics(kl).mean().item())
+        self._metrics["kl"].append(self.accelerator.gather_for_metrics(kl.mean()).mean().item())
+        self._metrics["token-loss"].append(self.accelerator.gather_for_metrics(per_token_loss1.mean()).mean().item())
 
         return loss
 
@@ -238,13 +239,17 @@ if __name__ == "__main__":
             )
         else:
             training_stats = trainer.train()
+        
+        # save training stats
+        if PartialState().local_process_index == 0:
+            with open(os.path.join(output_path, f'training_stats_{current_step}.json'), 'w') as f:
+                training_stats = training_stats._asdict()
+                training_stats.update({'learning_rate': trainer._get_learning_rate()})
+                training_stats.update(trainer._metrics)
+                json.dump(training_stats, f, indent=2)
     except Exception as e:
         with open(os.path.join(output_path, f'training_stats_{current_step}.json'), 'w') as f:
             json.dump({'error': str(e)}, f, indent=2)
 
 
-    # save training stats
-    with open(os.path.join(output_path, f'training_stats_{current_step}.json'), 'w') as f:
-        training_stats = training_stats._asdict()
-        training_stats.update({'learning_rate': trainer.get_learning_rates()})
-        json.dump(training_stats, f, indent=2)
+
