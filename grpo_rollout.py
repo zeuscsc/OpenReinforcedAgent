@@ -375,4 +375,8 @@ def main():
         pickle.dump(rollout_result, f)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        with open(os.path.join('std.err'), 'w') as f:
+            f.write(str(e))

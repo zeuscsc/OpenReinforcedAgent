@@ -90,9 +90,7 @@ class GRPOTrainer(Trainer):
         ## negative because we want to minimize the policy loss
         policy_loss = -per_token_loss1 + self.beta * kl
 
-        # Average over completion tokens only (excluding padding)
-        num_completion_tokens = mask.float().sum()
-        loss = policy_loss.sum() / (num_completion_tokens + 1e-8)
+        loss = policy_loss.mean()
 
         # Update metrics
         self._metrics["kl"].append(self.accelerator.gather_for_metrics(kl.mean()).mean().item())
