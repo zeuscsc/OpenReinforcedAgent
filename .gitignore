@@ -51,3 +51,4 @@ peft
 test.ipynb
 vllm-models
 unsloth*
+std.err

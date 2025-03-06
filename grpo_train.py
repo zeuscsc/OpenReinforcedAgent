@@ -280,9 +280,9 @@ class TrainingManager:
             "advantages": advantages
         })
 
-    def train(self):
+    def train(self, resume_from_step=0):
         lora_model_path = self.lora_model_path
-        steps = 0
+        steps = resume_from_step
         # 1. Load dataset
         dataset = load_from_disk(self.dataset_path)
         train_dataset = dataset['train'].shuffle()
@@ -487,7 +487,8 @@ if __name__ == "__main__":
         num_devices=2,  # Use 2 GPUs by default
         eval_steps=20,
         save_steps=20,
-        max_length=2048 + 512,
+        max_length=2048,
     )
     
-    manager.train()
+    manager.train(resume_from_step=4)
+ 

@@ -298,7 +298,7 @@ def run_llm_rollout(
                         'role':'tool',
                         'content':json.dumps(
                             doc_store.search(
-                                **json.loads(messages[-1].tool_calls[0].function.arguments),
+                                query=json.loads(messages[-1].tool_calls[0].function.arguments).get('query', ''),
                                 n_results=3
                             )
                         )
