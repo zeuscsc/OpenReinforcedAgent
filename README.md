@@ -129,9 +129,9 @@ The reward distribution plot shows how the rewards are distributed across differ
 
 The rewards plot shows the progression of different reward components over training iterations:
 - **Overall Reward** shows consistent improvement
-- <b><span style="color:#89CFF0">MRR</span></b> (Mean Reciprocal Rank) increases steadily, indicating better retrieval performance
-- <b><span style="color:orange">Answer Similarity</span></b> (Orange) shows improvements but suffers from sudden drop
-- <b><span style="color:green">Format Adherence</span></b> (Green) stabilizes quickly, showing the agent learns proper output formatting early
+- <b><span style="color:#89CFF0">MRR</span></b> 🟦 increases steadily, indicating better retrieval performance
+- <b><span style="color:orange">Answer Similarity</span></b> 🟧 shows improvements but suffers from sudden drop
+- <b><span style="color:green">Format Adherence</span></b> 🟩 stabilizes quickly, showing the agent learns proper output formatting early
 
 These results demonstrate that GRPO effectively improves the agent's performance across multiple dimensions, with particularly strong gains in answer quality and retrieval accuracy.
 
