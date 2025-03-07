@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   app:
-    build: . 
+    image: orfa:latest
     volumes:
       - ./:/workspace
     command: tail -f /dev/null

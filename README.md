@@ -28,14 +28,15 @@ sudo docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
 
 ### Start Docker Container
 ```shell
-docker compose up -d
+docker build -t orfa:latest .
+docker run --gpus all -it orfa:latest /bin/bash
 ```
 
-# Data Prep
+### Once connected to container via CLI
 ```shell
-sudo docker exec -it openreinforcedagent-app-1 --runtime=nvidia --gpus all bash
+python data_prep.py
 ```
-docker exec -it 7b383adc1341 bash
+
 # How to use
 1. download Qwen2.5-7B-Instruct
 2. create QLoRA version of the model with create_lora_model.py
