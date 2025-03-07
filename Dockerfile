@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/pytorch:28.01-py3
+FROM nvcr.io/nvidia/pytorch:28.00-py3
 
 COPY requirements.txt .
 

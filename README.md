@@ -20,7 +20,10 @@ sudo apt-get update
 sudo apt-get install -y nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
-nvidia-ctk runtime configure --runtime=docker --config=$HOME/.config/docker/daemon.json
+```
+To test it, run:
+```shell
+sudo docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
 ```
 
 ### Start Docker Container
