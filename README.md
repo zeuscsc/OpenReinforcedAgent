@@ -28,15 +28,23 @@ sudo docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
 
 ### Start Docker Container
 ```shell
-docker build -t orfa:latest .
+docker build -t grpo:dev .
+docker run --gpus all -it grpo:dev /bin/bash
+```
+or use docker compose
+```shell
 docker compose run -d
 docker exec -it openreinforcedagent-app-1 /bin/bash
-# docker run --gpus all -it orfa:latest /bin/bash
 ```
 
 ### Once connected to container via CLI
 ```shell
 python data_prep.py
+```
+
+### Downlaod the base model
+```shell
+huggingface-cli download Qwen/Qwen2.5-7B-Instruct --local-dir .
 ```
 
 # How to use
