@@ -80,39 +80,53 @@ class TrainingManager:
         except Exception as e:
             logging.error(f"Error stopping docker container: {e}")
 
-    # Needed for FSDP / DS3 only. FSDP / DS3 requires bnb_quant_storage_type=torch.bfloat16, but vllm does not support it. Hence, the conversion.
-    # def spawn_convert_container(self, base_model_path, lora_model_path, output_path):
-    #     """Convert a trained lora model into vllm model"""
-    #     cmd = f"""docker run -d --name convert --rm --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
-    #              -v $(pwd):/workspace \
-    #              grpo:dev \
-    #              python merge_lora.py \
-    #              --base-model /workspace/{base_model_path} \
-    #              --lora-model /workspace/{lora_model_path} \
-    #              --output-path /workspace/{output_path}"""
+    #Needed for FSDP / DS3 only. FSDP / DS3 requires bnb_quant_storage_type=torch.bfloat16, but vllm does not support it. Hence, the conversion.
+    def spawn_convert_container(self, base_model_path, lora_model_path, output_path):
+        """Convert a trained lora model into vllm model"""
+        cmd = f"""docker run -d --name convert --rm --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
+                 -v $(pwd):/workspace \
+                 grpo:dev \
+                 python merge_lora.py \
+                 --base-model /workspace/{base_model_path} \
+                 --lora-model /workspace/{lora_model_path} \
+                 --output-path /workspace/{output_path}"""
         
-    #     try:
-    #         # Capture the container ID from the output
-    #         result = subprocess.run(cmd, shell=True, check=True, stdout=subprocess.PIPE, text=True)
-    #         container_id = result.stdout.strip()
-    #         logging.info(f"Successfully started convert container with ID: {container_id}")
-    #         return container_id
-    #     except subprocess.CalledProcessError as e:
-    #         logging.error(f"Failed to start convert container: {e}")
-    #         raise
+        try:
+            # Capture the container ID from the output
+            result = subprocess.run(cmd, shell=True, check=True, stdout=subprocess.PIPE, text=True)
+            container_id = result.stdout.strip()
+            logging.info(f"Successfully started convert container with ID: {container_id}")
+            return container_id
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Failed to start convert container: {e}")
+            raise
 
     def spawn_vllm_server(self, device, steps, base_model_path, lora_model_path, port=8000):
         # Kill any existing container
         self.kill_docker_container(f"vllm-server-{device}")
         
         # Start new container with vllm model and LoRA adapter
+        # cmd = f"""docker run -d --name vllm-server-{device} --rm --gpus='"device={device}"' --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
+        #          -v $(pwd):/workspace -p {port}:{port} \
+        #          -e NCCL_P2P_DISABLE=1 -e NCCL_SHM_DISABLE=1 \
+        #          vllm/vllm-openai:v0.7.2 \
+        #          --model /workspace/{base_model_path} \
+        #          --enable-lora \
+        #          --lora-modules grpo=/workspace/{lora_model_path} \
+        #          --tool-call-parser hermes \
+        #          --enable-auto-tool-choice \
+        #          --quantization bitsandbytes \
+        #          --load-format bitsandbytes \
+        #          --gpu-memory-utilization 0.8 \
+        #          --port {port} \
+        #          --max_model_len 8192"""
+        
+        # lora merge is inplace
         cmd = f"""docker run -d --name vllm-server-{device} --rm --gpus='"device={device}"' --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
                  -v $(pwd):/workspace -p {port}:{port} \
                  -e NCCL_P2P_DISABLE=1 -e NCCL_SHM_DISABLE=1 \
                  vllm/vllm-openai:v0.7.2 \
-                 --model /workspace/{base_model_path} \
-                 --enable-lora \
-                 --lora-modules grpo=/workspace/{lora_model_path} \
+                 --model /workspace/{lora_model_path} \
                  --tool-call-parser hermes \
                  --enable-auto-tool-choice \
                  --quantization bitsandbytes \
@@ -120,7 +134,7 @@ class TrainingManager:
                  --gpu-memory-utilization 0.8 \
                  --port {port} \
                  --max_model_len 8192"""
-        
+
         try:
             result = subprocess.run(cmd, shell=True, check=True, capture_output=True)
             container_id = result.stdout.strip()
@@ -138,7 +152,7 @@ class TrainingManager:
             python /workspace/grpo_rollout.py \
             --dataset /workspace/{dataset_path} \
             --device cuda \
-            --model grpo \
+            --model /workspace/vllm-models/vllm-{steps} \
             --num_rollouts {num_rollouts} \
             --vllm_port {vllm_port}"""
         try:
@@ -178,7 +192,7 @@ class TrainingManager:
         cmd = f"""docker run -d --name training --rm --gpus all --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
                  -v $(pwd):/workspace \
                  grpo:dev \
-                 accelerate launch --num_processes=2 grpo_trainer.py \
+                 accelerate launch --config_file "deepspeed_config.yaml" grpo_trainer.py \
                  --checkpoint-path /workspace/{checkpoint_path} \
                  --dataset-paths {' '.join(dataset_paths)} \
                  --max-steps {max_steps}"""
@@ -240,7 +254,7 @@ class TrainingManager:
                     _labels[index] = -100
 
             _attention_mask = [1] * len(_input_ids)
-            _advantages = [advantage] * len(_input_ids)
+            _advantages = [advantage] * (len(_input_ids) - 1) + [0.0]
 
             # left paddings and right truncations
             if len(_input_ids) >= self.max_length:
@@ -266,9 +280,9 @@ class TrainingManager:
             "advantages": advantages
         })
 
-    def train(self):
+    def train(self, resume_from_step=0):
         lora_model_path = self.lora_model_path
-        steps = 0
+        steps = resume_from_step
         # 1. Load dataset
         dataset = load_from_disk(self.dataset_path)
         train_dataset = dataset['train'].shuffle()
@@ -285,17 +299,17 @@ class TrainingManager:
                 if steps > 0:
                     checkpoint_path = checkpoint_path + f"/checkpoint-{steps}"
                 # Conversion if needed for FSDP / DS3
-                # # Delete the last converted model to conserve space, except for save steps
-                # if not ((steps % self.save_steps == 0 and steps != 0) or steps == self.max_steps - 1):
-                #     subprocess.run(f'docker run -v $(pwd):/workspace python bash -c "rm -rf /workspace/vllm-models/vllm-{steps-1} || true"', shell=True, check=True)
-                # # Convert the current model into vLLM model
-
-                # self.spawn_convert_container(
-                #     base_model_path=self.base_model_path,
-                #     lora_model_path=checkpoint_path,
-                #     output_path=os.path.join('vllm-models', f"vllm-{steps}")
-                # )
-                    
+                # Delete the last converted model to conserve space, except for save steps
+                if not ((steps % self.save_steps == 0 and steps != 0) or steps == self.max_steps - 1):
+                    subprocess.run(f'docker run -v $(pwd):/workspace python bash -c "rm -rf /workspace/vllm-models/vllm-{steps-1} || true"', shell=True, check=True)
+                
+                # Convert the current model into vLLM model
+                self.spawn_convert_container(
+                    base_model_path=self.base_model_path,
+                    lora_model_path=checkpoint_path,
+                    output_path=os.path.join('vllm-models', f"vllm-{steps}")
+                )
+                
                 while True:
                     if not self.check_container_exists(container_name="convert"):
                         break
@@ -304,7 +318,14 @@ class TrainingManager:
                 # Launch vLLM servers and rollout containers on each device
                 for device in range(self.num_devices):
                     port = 8000 + device
-                    self.spawn_vllm_server(device=device, steps=steps, base_model_path=self.base_model_path, lora_model_path=checkpoint_path, port=port)
+                    self.spawn_vllm_server(
+                        device=device,
+                        steps=steps, 
+                        base_model_path=self.base_model_path, 
+                        #lora_model_path=checkpoint_path,
+                        lora_model_path=os.path.join('vllm-models', f"vllm-{steps}"), 
+                        port=port
+                    )
 
                 while True:
                     try:
@@ -460,13 +481,14 @@ if __name__ == "__main__":
         output_dir="Qwen2.5-7B-Instruct-qlora",
         max_steps=250,
         learning_rate=1e-4,
-        batch_size=16,
-        num_rollouts=64,
-        beta=0.1,
+        batch_size=32,
+        num_rollouts=32,
+        beta=0.04,
         num_devices=2,  # Use 2 GPUs by default
         eval_steps=20,
         save_steps=20,
         max_length=2048,
     )
     
-    manager.train()
+    manager.train(resume_from_step=0)
+ 

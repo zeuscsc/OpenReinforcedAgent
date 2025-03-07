@@ -36,8 +36,8 @@ class GRPOTrainer(Trainer):
         data_collator=None,
         train_dataset=None,
         eval_dataset=None,
-        beta=0.1,  # KL penalty coefficient
-        epsilon=0.04,  # Clamping coefficient
+        beta=0.04,  # KL penalty coefficient
+        epsilon=0.2,  # Clamping coefficient
         **kwargs,
     ):
         super().__init__(model, args, **kwargs)
@@ -45,7 +45,7 @@ class GRPOTrainer(Trainer):
         self.eval_dataset = eval_dataset
         self.beta = beta
         self.epsilon = epsilon
-        self._metrics = {"completion_length": [], "kl": []}
+        self._metrics = {"kl": [], "token-loss": []}
         self._last_loaded_step = None
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
@@ -58,7 +58,7 @@ class GRPOTrainer(Trainer):
         """
         if return_outputs:
             raise ValueError("The RLTrainer does not support returning outputs")
-        logger.info(f'learning_rate: {self._get_learning_rate()}')
+
         # Get inputs
         input_ids = inputs.get("input_ids").to(self.model.device)
         attention_mask = inputs.get("attention_mask").to(self.model.device)
@@ -90,13 +90,11 @@ class GRPOTrainer(Trainer):
         ## negative because we want to minimize the policy loss
         policy_loss = -per_token_loss1 + self.beta * kl
 
-        # Average over completion tokens only (excluding padding)
-        num_completion_tokens = mask.float().sum()
-        loss = policy_loss.sum() / (num_completion_tokens + 1e-8)
+        loss = policy_loss.mean()
 
         # Update metrics
-        self._metrics["completion_length"].append(mask.sum().item())
-        self._metrics["kl"].append((kl.sum() / num_completion_tokens).item())
+        self._metrics["kl"].append(self.accelerator.gather_for_metrics(kl.mean()).mean().item())
+        self._metrics["token-loss"].append(self.accelerator.gather_for_metrics(per_token_loss1.mean()).mean().item())
 
         return loss
 
@@ -160,8 +158,8 @@ if __name__ == "__main__":
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_quant_storage=torch.uint8,
-        # bnb_4bit_quant_storage=torch.bfloat16, # needed for FSDP / DS3
+        # bnb_4bit_quant_storage=torch.uint8,
+        bnb_4bit_quant_storage=torch.bfloat16, # needed for FSDP / DS3
     )
 
     # Training model (base model with LoRA)
@@ -174,11 +172,23 @@ if __name__ == "__main__":
         use_cache=True,
         device_map={'':PartialState().local_process_index}
     )
+
+    from liger_kernel.transformers import apply_liger_kernel_to_qwen2
+
+    apply_liger_kernel_to_qwen2(
+        model = model.base_model.model,
+        rope = True,
+        cross_entropy = False,
+        fused_linear_cross_entropy = False,
+        rms_norm = True,
+        swiglu = True,
+    )
     
+    gradient_accumulation_steps = len(dataset) // PartialState().num_processes
     # 4. Setup training arguments
     training_args = TrainingArguments(
         per_device_train_batch_size=1,
-        gradient_accumulation_steps=len(dataset) // 2,
+        gradient_accumulation_steps=gradient_accumulation_steps,
         remove_unused_columns=False,
         bf16=True,
         learning_rate=1e-4,
@@ -215,6 +225,8 @@ if __name__ == "__main__":
         train_dataset=dataset,
         data_collator=data_collator,
         args=training_args,
+        beta=0.04,  # KL penalty coefficient
+        epsilon=0.2,  # Clamping coefficient
         callbacks=[StepCallback]
     )
     
@@ -225,13 +237,17 @@ if __name__ == "__main__":
             )
         else:
             training_stats = trainer.train()
+        
+        # save training stats
+        if PartialState().local_process_index == 0:
+            with open(os.path.join(output_path, f'training_stats_{current_step}.json'), 'w') as f:
+                training_stats = training_stats._asdict()
+                training_stats.update({'learning_rate': trainer._get_learning_rate()})
+                training_stats.update(trainer._metrics)
+                json.dump(training_stats, f, indent=2)
     except Exception as e:
         with open(os.path.join(output_path, f'training_stats_{current_step}.json'), 'w') as f:
             json.dump({'error': str(e)}, f, indent=2)
 
 
-    # save training stats
-    with open(os.path.join(output_path, f'training_stats_{current_step}.json'), 'w') as f:
-        training_stats = training_stats._asdict()
-        training_stats.update({'learning_rate': trainer.get_learning_rates()})
-        json.dump(training_stats, f, indent=2)
+

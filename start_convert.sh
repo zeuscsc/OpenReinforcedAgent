@@ -3,5 +3,5 @@ docker run -it --name convert --rm --gpus all --ipc=host --ulimit memlock=-1 --u
                  grpo:dev \
                  python merge_lora.py \
                  --base-model /workspace/Qwen2.5-7B-Instruct \
-                 --lora-model /workspace/Qwen2.5-7B-Instruct-qlora-grpo/checkpoint-1 \
+                 --lora-model /workspace/Qwen2.5-7B-Instruct-qlora/checkpoint-1 \
                  --output-path /workspace/vllm-models/vllm-1

@@ -51,5 +51,4 @@ peft
 test.ipynb
 vllm-models
 unsloth*
-
-backup
+std.err

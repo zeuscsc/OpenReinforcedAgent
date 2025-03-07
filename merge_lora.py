@@ -9,8 +9,7 @@ from transformers import (
 from peft import AutoPeftModelForCausalLM
 import logging
 import json
-from awq import AutoAWQForCausalLM
-
+#from awq import AutoAWQForCausalLM
 
 logging.basicConfig(level=logging.INFO)
 
@@ -28,7 +27,7 @@ def merge_lora(
     """
     logging.info(f"Loading LoRA adapter from {lora_model_path}")
     model = AutoPeftModelForCausalLM.from_pretrained(
-        lora_model_path,
+        pretrained_model_name_or_path=lora_model_path,
         torch_dtype=torch.bfloat16,
         #torch_dtype=torch.float16, # awq specific
     )
@@ -46,7 +45,7 @@ def merge_lora(
     del model
 
     model = AutoPeftModelForCausalLM.from_pretrained(
-        lora_model_path + '-dequant',
+        pretrained_model_name_or_path=lora_model_path + '-dequant',
         torch_dtype=torch.bfloat16
         #torch_dtype=torch.float16, # awq specific
     )
@@ -56,9 +55,9 @@ def merge_lora(
 
     model.save_pretrained(output_path, save_embedding_layers=False)
     
-    del model
+    # del model
 
-    # BNB 4bit
+    # # BNB 4bit
     # model = AutoModelForCausalLM.from_pretrained(
     #     output_path,
     #     torch_dtype=torch.bfloat16,
@@ -67,12 +66,13 @@ def merge_lora(
     #         load_in_4bit=True,
     #         bnb_4bit_quant_type="nf4",
     #         bnb_4bit_compute_dtype=torch.bfloat16,
+    #         bnb_4bit_quant_storage=torch.uint8,
     #     )
     # )
 
     # model.save_pretrained(output_path, save_embedding_layers=False)
 
-    # AWQ
+    ## AWQ
     # model = AutoAWQForCausalLM.from_pretrained(
     #     output_path,
     #     trust_remote_code=True,
@@ -89,7 +89,7 @@ def merge_lora(
     try:
         AutoTokenizer.from_pretrained(output_path)
     except:
-        tokenizer = AutoTokenizer.from_pretrained(lora_model_path)
+        tokenizer = AutoTokenizer.from_pretrained(base_model)
         tokenizer.save_pretrained(output_path)
     
     logging.info("Merge complete!")

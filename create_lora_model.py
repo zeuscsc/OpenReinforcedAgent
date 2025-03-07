@@ -19,8 +19,8 @@ bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_quant_type="nf4",
     bnb_4bit_compute_dtype=torch.bfloat16,
-    bnb_4bit_quant_storage=torch.uint8,
-    # bnb_4bit_quant_storage=torch.bfloat16 # needed for fsdp / ds3
+    # bnb_4bit_quant_storage=torch.uint8,
+    bnb_4bit_quant_storage=torch.bfloat16 # needed for fsdp / ds3
 )
 
 def create_lora_model(
