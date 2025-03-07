@@ -30,8 +30,8 @@ sudo docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
 ```shell
 docker build -t orfa:latest .
 docker compose run -d
-# docker exec -it openreinforcedagent-app-1 /bin/bash
-docker run --gpus all -it orfa:latest /bin/bash
+docker exec -it openreinforcedagent-app-1 /bin/bash
+# docker run --gpus all -it orfa:latest /bin/bash
 ```
 
 ### Once connected to container via CLI
