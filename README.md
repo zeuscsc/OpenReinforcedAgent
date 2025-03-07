@@ -44,8 +44,7 @@ python data_prep.py
 
 ### Downlaod the base model
 ```shell
-huggingface-cli download Qwen/Qwen2.5-7B-Instruct --local-dir ./Qwen/Qwen2.5-7B-Instruct
-huggingface-cli download Qwen/Qwen2.5-7B-Instruct-bnb-4bit --local-dir ./Qwen/Qwen2.5-7B-Instruct-bnb-4bit
+huggingface-cli download Qwen/Qwen2.5-7B-Instruct --local-dir ./Qwen2.5-7B-Instruct
 ```
 
 # How to use
