@@ -159,6 +159,17 @@ def calculate_rewards(condition, rollout_results, reward_functions, weight_schem
             "rewards_by_function": rewards_by_function,
             "std": float(np.std(projected_rewards))
         }
+    elif weight_scheme == "l2norm":
+        rewards = [np.array(rewards) for rewards in rewards_by_function.values()]
+        rewards = [np.square(r) for r in rewards]
+        rewards = np.sqrt(np.sum(rewards, axis=0))
+        return {
+            "advantages": ((rewards - np.mean(rewards)) / (np.std(rewards) + 1e-8)).tolist(),
+            "rewards": rewards.tolist(),
+            "weights": {name: 1.0 for name in reward_functions.keys()},
+            "rewards_by_function": rewards_by_function,
+            "std": float(np.std(rewards))
+        }
     else:  # uniform
         weights = {name: 1.0/len(reward_functions) for name in reward_functions.keys()}
     
@@ -361,7 +372,7 @@ def main():
             condition=group["example"],
             rollout_results=group["rollouts"],
             reward_functions=reward_functions,
-            weight_scheme="std"
+            weight_scheme={"mrr": 1.0, "answer_similarity": 1.0, "format": 1.0}
         )
         for group in grouped_rollout
     ]

@@ -490,5 +490,5 @@ if __name__ == "__main__":
         max_length=2048,
     )
     
-    manager.train(resume_from_step=4)
+    manager.train(resume_from_step=0)
  

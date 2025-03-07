@@ -184,7 +184,7 @@ if __name__ == "__main__":
         swiglu = True,
     )
     
-    gradient_accumulation_steps = len(dataset) // 2
+    gradient_accumulation_steps = len(dataset) // PartialState().num_processes
     # 4. Setup training arguments
     training_args = TrainingArguments(
         per_device_train_batch_size=1,
