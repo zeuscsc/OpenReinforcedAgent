@@ -26,34 +26,26 @@ To test it, run:
 sudo docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
 ```
 
-### Start Docker Container
+### Tmux
 ```shell
-docker build -t grpo:dev .
-docker run --gpus all -it grpo:dev /bin/bash
+tmux new -s grpo
+python grpo_train.py > script.log 2>&1
 ```
-or use docker compose
+Detach from the tmux session: Ctrl+b followed by d
+Reattach to tumx session:
 ```shell
-docker compose up -d
-docker exec -it openreinforcedagent-app-1 /bin/bash
+tmux attach -t grpo
 ```
-
-### Once connected to container via CLI
+To Kill the session
 ```shell
-python data_prep.py
-```
-
-### Downlaod the base model
-```shell
-huggingface-cli download Qwen/Qwen2.5-7B-Instruct --local-dir ./Qwen2.5-7B-Instruct
+tmux kill-session -t grpo
 ```
 
-# How to use
-1. download Qwen2.5-7B-Instruct
-2. create QLoRA version of the model with create_lora_model.py
-3. Pull and build docker images
-4. run data_prep.py to prepare the dataset
-5. run grpo_train.py to train the model
-
-# Docker images
-1. vllm/vllm-openai:v0.7.2
-2. build docker image with Dockerfile, tag it with `docker build grpo:dev .`
+```shell
+docker run \
+    --gpus all \
+    -p 8000:8000 \
+    --name vllm-openai-container \
+    -d \
+    vllm/vllm-openai:v0.7.2
+```
