@@ -474,11 +474,11 @@ class TrainingManager:
 
 if __name__ == "__main__":
     manager = TrainingManager(
-        base_model_path="Qwen2.5-7B-Instruct",
-        base_model_path_quantized="Qwen2.5-7B-Instruct-bnb-4bit",
-        lora_model_path="Qwen2.5-7B-Instruct-qlora",
+        base_model_path="Qwen/Qwen2.5-7B-Instruct",
+        base_model_path_quantized="Qwen/Qwen2.5-7B-Instruct-bnb-4bit",
+        lora_model_path="Qwen/Qwen2.5-7B-Instruct-qlora",
         dataset_path="dataset_curated",
-        output_dir="Qwen2.5-7B-Instruct-qlora",
+        output_dir="Qwen/Qwen2.5-7B-Instruct-qlora",
         max_steps=250,
         learning_rate=1e-4,
         batch_size=32,
