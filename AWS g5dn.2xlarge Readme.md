@@ -16,7 +16,7 @@ sudo docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
 First download the dataset from a cheaper instant, upload the documents to this instant.
 ```shell
 python data_prep.py
-huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct --local-dir /workspace/Qwen2.5-1.5B-Instruct
+huggingface-cli download Qwen/Qwen2.5-1.5B-Instruct --local-dir $(pwd)/Qwen2.5-1.5B-Instruct
 python create_lora_model.py
 ```
 
