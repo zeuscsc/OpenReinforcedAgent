@@ -17,3 +17,4 @@ bitsandbytes
 xformers
 triton
 torchvision
+pathos==0.3.2
