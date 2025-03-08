@@ -474,20 +474,20 @@ class TrainingManager:
 
 if __name__ == "__main__":
     manager = TrainingManager(
-        base_model_path="Qwen2.5-7B-Instruct",
-        base_model_path_quantized="Qwen2.5-7B-Instruct-bnb-4bit",
-        lora_model_path="Qwen2.5-7B-Instruct-qlora",
+        base_model_path="Qwen2.5-1.5B-Instruct",
+        base_model_path_quantized="Qwen2.5-1.5B-Instruct-bnb-4bit",
+        lora_model_path="Qwen2.5-1.5B-Instruct-qlora",
         dataset_path="dataset_curated",
-        output_dir="Qwen2.5-7B-Instruct-qlora",
-        max_steps=25,
+        output_dir="Qwen2.5-1.5B-Instruct-qlora",
+        max_steps=250,
         learning_rate=1e-4,
-        batch_size=1,
-        num_rollouts=8,
+        batch_size=32,
+        num_rollouts=32,
         beta=0.04,
         num_devices=1,  # Use 2 GPUs by default
-        eval_steps=2,
-        save_steps=2,
-        max_length=1024,
+        eval_steps=20,
+        save_steps=20,
+        max_length=2048,
     )
     
     manager.train(resume_from_step=0)
