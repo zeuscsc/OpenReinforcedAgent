@@ -65,7 +65,7 @@ class TrainingManager:
         self.eval_steps = eval_steps
         self.save_steps = save_steps
         self.max_length = max_length
-        self.tokenizer = AutoTokenizer.from_pretrained(lora_model_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(f"/workspace/{lora_model_path}")
 
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
