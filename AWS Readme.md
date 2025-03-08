@@ -15,17 +15,9 @@ sudo docker run --rm --runtime=nvidia --gpus all ubuntu nvidia-smi
 ### Prepare Dataset Download Qwen2.5-7B-Instruct
 First download the dataset from a cheaper instant, upload the documents to this instant.
 ```shell
-sudo mkdir /workspace
-sudo chmod 777 /workspace
 python data_prep.py
-huggingface-cli download Qwen/Qwen2.5-7B-Instruct --local-dir /workspace/Qwen2.5-7B-Instruct
+huggingface-cli download Qwen/Qwen2.5-7B-Instruct --local-dir ~/OpenReinforcedAgent/Qwen2.5-7B-Instruct
 python create_lora_model.py
-```
-
-### Login to Hugging Face
-Before running the training, make sure you have login to hugging-face via cli
-```shell
-huggingface-cli login
 ```
 
 ### Tmux
