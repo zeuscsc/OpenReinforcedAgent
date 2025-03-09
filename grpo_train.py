@@ -479,14 +479,14 @@ if __name__ == "__main__":
         lora_model_path="Qwen2.5-7B-Instruct-qlora",
         dataset_path="dataset_curated",
         output_dir="Qwen2.5-7B-Instruct-qlora",
-        max_steps=250,
+        max_steps=32,
         learning_rate=1e-5,
         batch_size=64,
         num_rollouts=16,
         beta=0.04,
         num_devices=2,  # Use 2 GPUs by default
-        eval_steps=20,
-        save_steps=20,
+        eval_steps=8,
+        save_steps=8,
         max_length=2048,
     )
 

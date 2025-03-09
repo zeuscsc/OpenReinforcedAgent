@@ -24,7 +24,7 @@ def get_mrr(condition, rollout_result):
         map(
             lambda x: json.loads(x.get('content', None)).get('ids', None), 
             filter(
-                lambda x: isinstance(x, dict) and (x.get('role', None) == 'ipython' or x.get('role', None) == 'tool'), 
+                lambda x: x.get('role', None) == 'ipython' or x.get('role', None) == 'tool', 
                 rollout_result
             )
         )
@@ -33,7 +33,7 @@ def get_mrr(condition, rollout_result):
     if len(retrieved_ids) == 0:
         return 0.0
     
-    retrieved_ids = [r.split("_chunk_")[0] for r in retrieved_ids[-1]]
+    retrieved_ids = [r.split("_chunk_")[0] for r in retrieved_ids[0]]
     correct_id = condition.get('document_id')
     
     if correct_id in retrieved_ids:
@@ -75,18 +75,19 @@ def get_format_reward(condition, rollout_result):
         condition (dict): Contains format requirements and constraints
         rollout_result (list): List of messages to check for format compliance
     """
-    retrieved_ids = list(
-        map(
-            lambda x: json.loads(x.get('content', None)).get('ids', None), 
-            filter(
-                lambda x: isinstance(x, dict) and (x.get('role', None) == 'ipython' or x.get('role', None) == 'tool'), 
-                rollout_result
-            )
+    tool_calls = list(
+        filter(
+            lambda x: x.get('role', None) == 'ipython' or x.get('role', None) == 'tool', 
+            rollout_result
         )
     )
     
     # did not emit tool calls
-    if len(retrieved_ids) == 0:
+    if len(tool_calls) == 0:
+        return 0.0
+
+    # did not emit answer
+    if rollout_result[-1].get('role', None) != 'assistant':
         return 0.0
 
     return 1.0
@@ -322,11 +323,11 @@ def run_llm_rollout(
                             messages=messages,
                             tools=tools,
                         )
+                        response = chat_completion.choices[0].message
+                        messages.append(response)
                     except Exception as e:
                         break
-                    response = chat_completion.choices[0].message
-                    messages.append(response)
-                    
+
             # Store rollout result
             rollout.append([message_to_dict(x) for x in messages])
         
