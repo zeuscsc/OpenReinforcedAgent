@@ -303,24 +303,27 @@ def run_llm_rollout(
                 }
             ]
             
-            for _ in range(5):
+            for _ in range(3):
                 if isinstance(messages[-1], ChatCompletionMessage) and messages[-1].tool_calls:
                     messages.append({
                         'role':'tool',
                         'content':json.dumps(
                             doc_store.search(
                                 query=json.loads(messages[-1].tool_calls[0].function.arguments).get('query', ''),
-                                n_results=3
+                                n_results=5
                             )
                         )
                     })
                     continue
                 if isinstance(messages[-1], dict):
-                    chat_completion = client.chat.completions.create(
-                        model=model_path,
-                        messages=messages,
-                        tools=tools,
-                    )
+                    try:
+                        chat_completion = client.chat.completions.create(
+                            model=model_path,
+                            messages=messages,
+                            tools=tools,
+                        )
+                    except Exception as e:
+                        break
                     response = chat_completion.choices[0].message
                     messages.append(response)
                     

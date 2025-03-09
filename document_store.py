@@ -238,8 +238,8 @@ class DocumentStore:
             for idx, (context, chunk_text) in enumerate(chunk_document(
                 example['document_content'],
                 example,
-                self.embedding_function.tokenizer,
-                509 # minus the 'passage: ' prefix
+                tokenizer=self.embedding_function.tokenizer,
+                max_chunk_size=253 # minus the 'passage: ' prefix
             )):
                 # Combine context and chunk
                 full_text = f"{context}\n\n{chunk_text}"

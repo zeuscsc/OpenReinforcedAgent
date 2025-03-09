@@ -119,7 +119,7 @@ class TrainingManager:
         #          --load-format bitsandbytes \
         #          --gpu-memory-utilization 0.8 \
         #          --port {port} \
-        #          --max_model_len 8192"""
+        #          --max_model_len 2048"""
         
         # lora merge is inplace
         cmd = f"""docker run -d --name vllm-server-{device} --rm --gpus='"device={device}"' --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
@@ -133,7 +133,7 @@ class TrainingManager:
                  --load-format bitsandbytes \
                  --gpu-memory-utilization 0.8 \
                  --port {port} \
-                 --max_model_len 8192"""
+                 --max_model_len 2048"""
 
         try:
             result = subprocess.run(cmd, shell=True, check=True, capture_output=True)
@@ -480,15 +480,15 @@ if __name__ == "__main__":
         dataset_path="dataset_curated",
         output_dir="Qwen2.5-7B-Instruct-qlora",
         max_steps=250,
-        learning_rate=1e-4,
-        batch_size=32,
-        num_rollouts=32,
+        learning_rate=1e-5,
+        batch_size=64,
+        num_rollouts=16,
         beta=0.04,
         num_devices=2,  # Use 2 GPUs by default
         eval_steps=20,
         save_steps=20,
         max_length=2048,
     )
-    
+
     manager.train(resume_from_step=0)
  
