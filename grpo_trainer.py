@@ -191,7 +191,7 @@ if __name__ == "__main__":
         gradient_accumulation_steps=gradient_accumulation_steps,
         remove_unused_columns=False,
         bf16=True,
-        learning_rate=1e-4,
+        learning_rate=1e-5,
         weight_decay=0.01,
         output_dir=output_path,
         optim="adamw_8bit",

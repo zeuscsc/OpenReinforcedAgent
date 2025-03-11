@@ -24,7 +24,7 @@ def get_mrr(condition, rollout_result):
         map(
             lambda x: json.loads(x.get('content', None)).get('ids', None), 
             filter(
-                lambda x: isinstance(x, dict) and (x.get('role', None) == 'ipython' or x.get('role', None) == 'tool'), 
+                lambda x: x.get('role', None) == 'ipython' or x.get('role', None) == 'tool', 
                 rollout_result
             )
         )
@@ -33,7 +33,7 @@ def get_mrr(condition, rollout_result):
     if len(retrieved_ids) == 0:
         return 0.0
     
-    retrieved_ids = [r.split("_chunk_")[0] for r in retrieved_ids[-1]]
+    retrieved_ids = [r.split("_chunk_")[0] for r in retrieved_ids[0]]
     correct_id = condition.get('document_id')
     
     if correct_id in retrieved_ids:
@@ -48,7 +48,19 @@ def get_answer_similarity(embedding_function, condition, rollout_result):
         condition (dict): Contains the ground truth and embedding function
         rollout_result (list): List of messages containing model's answer
     """
-    model_answer = rollout_result[-1].get('content', None)
+
+    # Make sure last message generated and not tool call
+    if rollout_result[-1].get('role', None) != 'assistant':
+        return 0.0
+    if rollout_result[-1].get('tool_calls', None) is not None:
+        return 0.0
+    
+    model_answer = rollout_result[-1].get('content', None).split('</think>')
+    if len(model_answer) > 0:
+        model_answer = model_answer[-1]
+    else:
+        model_answer = model_answer[0]
+
     ground_truth = condition.get('answer', None)
     
     if model_answer is None:
@@ -75,21 +87,28 @@ def get_format_reward(condition, rollout_result):
         condition (dict): Contains format requirements and constraints
         rollout_result (list): List of messages to check for format compliance
     """
-    retrieved_ids = list(
-        map(
-            lambda x: json.loads(x.get('content', None)).get('ids', None), 
-            filter(
-                lambda x: isinstance(x, dict) and (x.get('role', None) == 'ipython' or x.get('role', None) == 'tool'), 
-                rollout_result
-            )
-        )
-    )
+    generated_responses = list(filter(
+        lambda x: x.get('role', None) == 'assistant',
+        rollout_result
+    ))
     
-    # did not emit tool calls
-    if len(retrieved_ids) == 0:
+    num_generated_responses = len(generated_responses)
+
+    if num_generated_responses == 0:
         return 0.0
 
-    return 1.0
+    num_correct_format = 0
+    
+    for response in generated_responses:
+        content = response.get('content', None)
+        if content is None:
+            continue
+        
+        # Check if content matches format requirements
+        if '<think>' in content and '</think>' in content:
+            num_correct_format += 1
+
+    return num_correct_format / num_generated_responses
 
 def get_reward_functions(embedding_function):
     """Get the reward functions with initialized embedding function.
@@ -227,6 +246,7 @@ def message_to_dict(message):
         if message.tool_calls:
             return {
                 'role':'assistant',
+                'content':message.content,
                 'tool_calls':[
                     {
                         'function': {
@@ -282,6 +302,18 @@ def run_llm_rollout(
         }
     }]
 
+    system_prompt = """### Role
+You are an assistant that only answers questions about the medical document store.
+
+### Instructions
+You must use the search tool once and only once to find relevant documents to the question. 
+You must perform step by step planning and reasoning every time before using tool and giving response to user.
+
+### Planning and Reasoning Format
+Every response must begin with <think> tag, followed with step by step planning and reasoning, and then a </think> tag.
+After planning and reasoning, start your answer or tool calls.
+"""
+
     # Process examples
     grouped_rollout = []
     
@@ -295,7 +327,7 @@ def run_llm_rollout(
             messages = [
                 {
                     'role':'system',
-                    'content':'You are an assistant that only answers questions about the medical document store. Use the search tool once and only once to find relevant documents to the question. Fomulate your query carefully and with details.'
+                    'content':system_prompt
                 },
                 {
                     'role':"user",
@@ -303,27 +335,29 @@ def run_llm_rollout(
                 }
             ]
             
-            for _ in range(5):
-                if isinstance(messages[-1], ChatCompletionMessage) and messages[-1].tool_calls:
-                    messages.append({
-                        'role':'tool',
-                        'content':json.dumps(
-                            doc_store.search(
+            for _ in range(3):
+                try:
+                    if isinstance(messages[-1], ChatCompletionMessage) and messages[-1].tool_calls:
+                        messages.append({
+                            'role':'tool',
+                            'content':json.dumps(
+                                doc_store.search(
                                 query=json.loads(messages[-1].tool_calls[0].function.arguments).get('query', ''),
-                                n_results=3
+                                n_results=5
                             )
                         )
                     })
-                    continue
-                if isinstance(messages[-1], dict):
-                    chat_completion = client.chat.completions.create(
-                        model=model_path,
-                        messages=messages,
-                        tools=tools,
-                    )
-                    response = chat_completion.choices[0].message
-                    messages.append(response)
-                    
+                    if isinstance(messages[-1], dict):
+                        chat_completion = client.chat.completions.create(
+                            model=model_path,
+                            messages=messages,
+                            tools=tools,
+                        )
+                        response = chat_completion.choices[0].message
+                        messages.append(response)
+                except Exception as e:
+                    break
+
             # Store rollout result
             rollout.append([message_to_dict(x) for x in messages])
         

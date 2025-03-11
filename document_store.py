@@ -66,36 +66,70 @@ def chunk_document(
     context_tokens = len(tokenizer.encode(context))
     max_content_tokens = max_chunk_size - context_tokens
     
-    # Split into sentences and batch tokenize
-    sentences = split_into_sentences(text)
-    sentence_tokens = tokenizer(sentences, padding=False, truncation=False)
-    token_lengths = {
-        sentence: len(tokens) 
-        for sentence, tokens in zip(sentences, sentence_tokens['input_ids'])
-    }
+    # Tokenize the entire text
+    tokens = tokenizer.encode(text)
     
-    # Process sentences
-    current_chunk = []
-    current_length = 0
-
-    for sentence in sentences:
-        sentence_token_count = token_lengths[sentence]
+    # Find all positions of periods (token 5)
+    period_positions = [i for i, token in enumerate(tokens) if token == 5]
+    
+    if not period_positions:
+        # If no periods found, just chunk by token count
+        start = 0
+        while start < len(tokens):
+            end = min(start + max_content_tokens, len(tokens))
+            chunk_tokens = tokens[start:end]
+            chunk_text = tokenizer.decode(chunk_tokens)
+            yield context, chunk_text
+            start = end
+        return
+    
+    # Process chunks ending at periods
+    start = 0
+    current_position = 0
+    
+    while current_position < len(period_positions):
+        period_pos = period_positions[current_position]
+        chunk_size = period_pos - start + 1  # +1 to include the period
         
-        # Check if adding this sentence would exceed the limit
-        if current_length + sentence_token_count > max_content_tokens and current_chunk:
-            # Yield current chunk
-            yield context, " ".join(current_chunk)
-            # Start new chunk with current sentence
-            current_chunk = [sentence]
-            current_length = sentence_token_count
+        if chunk_size <= max_content_tokens:
+            # Check if we can include more periods within max_content_tokens
+            next_position = current_position + 1
+            while (next_position < len(period_positions) and 
+                   period_positions[next_position] - start + 1 <= max_content_tokens):
+                current_position = next_position
+                next_position += 1
+            
+            # Extract chunk ending at the furthest valid period
+            period_pos = period_positions[current_position]
+            chunk_tokens = tokens[start:period_pos+1]  # +1 to include the period
+            chunk_text = tokenizer.decode(chunk_tokens)
+            yield context, chunk_text
+            
+            # Move start position to after this period
+            start = period_pos + 1
+            current_position += 1
         else:
-            # Add sentence to current chunk
-            current_chunk.append(sentence)
-            current_length += sentence_token_count
+            # If the first period exceeds max_content_tokens, we need to split before the period
+            if current_position == 0 or start > period_positions[current_position-1]:
+                # No previous period to use, force split at max_content_tokens
+                end = start + max_content_tokens
+                chunk_tokens = tokens[start:end]
+                chunk_text = tokenizer.decode(chunk_tokens)
+                yield context, chunk_text
+                start = end
+            else:
+                # Use the previous period as the end point
+                period_pos = period_positions[current_position-1]
+                chunk_tokens = tokens[start:period_pos+1]  # +1 to include the period
+                chunk_text = tokenizer.decode(chunk_tokens)
+                yield context, chunk_text
+                start = period_pos + 1
     
-    # Handle remaining text
-    if current_chunk:
-        yield context, " ".join(current_chunk)
+    # Handle any remaining text after the last period
+    if start < len(tokens):
+        chunk_tokens = tokens[start:]
+        chunk_text = tokenizer.decode(chunk_tokens)
+        yield context, chunk_text
 
 class E5EmbeddingFunction(embedding_functions.EmbeddingFunction):
     def __init__(
@@ -109,7 +143,7 @@ class E5EmbeddingFunction(embedding_functions.EmbeddingFunction):
             model_name, 
             device=device, 
             tokenizer_kwargs={"padding": True, "truncation": True},
-            cache_folder="/workspace/sentence_transformers"
+            cache_folder="sentence_transformers"
         )
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
 
@@ -238,8 +272,8 @@ class DocumentStore:
             for idx, (context, chunk_text) in enumerate(chunk_document(
                 example['document_content'],
                 example,
-                self.embedding_function.tokenizer,
-                509 # minus the 'passage: ' prefix
+                tokenizer=self.embedding_function.tokenizer,
+                max_chunk_size=253 # minus the 'passage: ' prefix
             )):
                 # Combine context and chunk
                 full_text = f"{context}\n\n{chunk_text}"
@@ -372,7 +406,7 @@ class DocumentStore:
         # Semantic search
         semantic_results = self.collection.query(
             query_texts=[f"query: {query}"],
-            n_results=n_results,  # Get more results for better fusion
+            n_results=n_results*2,  # Get more results for better fusion
             where=where
         )
         
@@ -383,7 +417,7 @@ class DocumentStore:
             enumerate(bm25_scores),
             key=lambda x: x[1],
             reverse=True
-        )[:n_results]  # Get more results for better fusion
+        )[:n_results*2]  # Get more results for better fusion
             
         # Combine results
         return self._combine_results(semantic_results, bm25_results, n_results)     

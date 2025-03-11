@@ -26,11 +26,11 @@ bnb_config = BitsAndBytesConfig(
 def create_lora_model(
     base_model_path: str,
     output_dir: str,
-    r: int = 8,
+    r: int = 16,
     lora_alpha: int = 16,
     lora_dropout: float = 0.1,
     bias: str = "none",
-    target_modules: list = ["gate_proj", "up_proj", "down_proj"],
+    target_modules: list = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
 ):
     """
     Create a LoRA version of the base model.
