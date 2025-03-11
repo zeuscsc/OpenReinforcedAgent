@@ -473,12 +473,13 @@ class TrainingManager:
         logging.info("Training completed successfully")
 
 if __name__ == "__main__":
+    from models_paths_config import BASE_MODEL_PATH, BASE_MODEL_PATH_QUANTIZED, LORA_MODEL_PATH, OUTPUT_DIR
     manager = TrainingManager(
-        base_model_path="Qwen2.5-1.5B-Instruct",
-        base_model_path_quantized="Qwen2.5-1.5B-Instruct-bnb-4bit",
-        lora_model_path="Qwen2.5-1.5B-Instruct-qlora",
+        base_model_path=BASE_MODEL_PATH,
+        base_model_path_quantized=BASE_MODEL_PATH_QUANTIZED,
+        lora_model_path=LORA_MODEL_PATH,
         dataset_path="dataset_curated",
-        output_dir="Qwen2.5-1.5B-Instruct-qlora",
+        output_dir=OUTPUT_DIR,
         max_steps=100,
         learning_rate=5e-5,
         batch_size=32,

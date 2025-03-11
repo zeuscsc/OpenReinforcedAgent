@@ -101,8 +101,9 @@ def create_lora_model(
     return model, tokenizer
 
 if __name__ == "__main__":
+    from models_paths_config import BASE_MODEL_PATH, OUTPUT_DIR
     # Create LoRA version of the model
     model, tokenizer = create_lora_model(
-        base_model_path='Qwen2.5-1.5B-Instruct',
-        output_dir="Qwen2.5-1.5B-Instruct-qlora",
+        base_model_path=BASE_MODEL_PATH,
+        output_dir=OUTPUT_DIR,
     )
