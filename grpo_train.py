@@ -462,7 +462,7 @@ class TrainingManager:
                     time.sleep(30)  # Check every 30 seconds
 
                 steps += 1
-                
+            
             except Exception as e:
                 logging.error(f"Error during training: {e}")
                 # Kill all vLLM servers on error
@@ -480,7 +480,7 @@ if __name__ == "__main__":
         dataset_path="dataset_curated",
         output_dir="Qwen2.5-7B-Instruct-qlora",
         max_steps=100,
-        learning_rate=5e-5,
+        learning_rate=2e-4,
         batch_size=32,
         num_rollouts=32,
         beta=0.04,
