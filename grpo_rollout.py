@@ -213,7 +213,7 @@ def parse_rollout(grouped_rollout, rewards_info):
         rewards_info: List of reward information from calculate_rewards
         
     Returns:
-        HuggingFace Dataset containing messages, rewards, and metrics
+        Dictionary containing messages, rewards, and metrics
     """
     all_messages = []
     all_advantages = []
@@ -221,17 +221,47 @@ def parse_rollout(grouped_rollout, rewards_info):
     
     for group, reward_info in zip(grouped_rollout, rewards_info):
         rollouts = group["rollouts"]
-        all_messages.extend(rollouts)
-        all_advantages.extend(reward_info["advantages"])
+        original_reward_by_function = reward_info["rewards_by_function"]
         
-        # Store individual metric values for each rollout
+        # Store individual metric values for each rollout BEFORE filtering
         for i in range(len(rollouts)):
-            metrics = {
+            metrics = { 
                 name: values[i] 
-                for name, values in reward_info["rewards_by_function"].items()
+                for name, values in original_reward_by_function.items()
             }
             metrics["std"] = reward_info["std"]
             all_metrics.append(metrics)
+        
+        # Filter out rollouts with rewards not all above or below mean
+        reward_by_function = reward_info["rewards_by_function"]
+        reward_mean = {name: np.mean(values) for name, values in reward_by_function.items()}
+        
+        # Create a filtered list of rollouts, advantages, and their indices
+        filtered_rollouts = []
+        filtered_advantages = []
+        filtered_indices = []
+        
+        for i, rollout in enumerate(rollouts):
+            # Check if all rewards for this rollout are consistently above or below their respective means
+            all_above_mean = all(reward_by_function[name][i] >= reward_mean[name] for name in reward_by_function.keys())
+            all_below_mean = all(reward_by_function[name][i] <= reward_mean[name] for name in reward_by_function.keys())
+            # Keep rollouts that are consistently above or below mean across all reward functions
+            if all_above_mean or all_below_mean:
+                filtered_rollouts.append(rollout)
+                filtered_advantages.append(reward_info["advantages"][i])
+                filtered_indices.append(i)
+        
+        # Replace original lists with filtered versions
+        rollouts = filtered_rollouts
+        reward_info["advantages"] = filtered_advantages
+        
+        # Filter the rewards_by_function to only include the kept indices
+        reward_by_function = {name: [reward_by_function[name][i] for i in filtered_indices] for name in reward_by_function.keys()}
+        reward_info["rewards_by_function"] = reward_by_function
+        
+        # Store rollout messages
+        all_messages.extend(rollouts)
+        all_advantages.extend(reward_info["advantages"])
     
     return {
         'messages': all_messages,
@@ -318,12 +348,12 @@ After planning and reasoning, start your answer or tool calls.
     grouped_rollout = []
     
     num_examples = len(dataset)
-    for i in tqdm(range(0, num_examples)):
+    for i in tqdm(range(0, num_examples), total=num_examples, desc="Running rollouts"):
         example = dataset[i]
         rollout = []
         
         # Run rollouts for this example
-        for _ in tqdm(range(num_rollouts)):
+        while len(rollout) < num_rollouts:
             messages = [
                 {
                     'role':'system',
@@ -335,6 +365,7 @@ After planning and reasoning, start your answer or tool calls.
                 }
             ]
             
+            error_count = 0
             for _ in range(3):
                 try:
                     if isinstance(messages[-1], ChatCompletionMessage) and messages[-1].tool_calls:
@@ -356,10 +387,13 @@ After planning and reasoning, start your answer or tool calls.
                         response = chat_completion.choices[0].message
                         messages.append(response)
                 except Exception as e:
+                    error_count += 1
                     break
 
             # Store rollout result
-            rollout.append([message_to_dict(x) for x in messages])
+            if error_count == 0:
+                rollout.append([message_to_dict(x) for x in messages])
+
         
         # Store results for this example
         grouped_rollout.append({
