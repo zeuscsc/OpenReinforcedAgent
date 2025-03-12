@@ -91,11 +91,11 @@ def create_lora_model(
     tokenizer.save_pretrained(output_dir)
     
     # modify adapter config
-    with open(os.path.join(output_dir, "adapter_config.json"), "r") as f:
-        adapter_config = json.load(f)
-        adapter_config["base_model_name_or_path"] = base_model_path+"-bnb-4bit"
-    with open(os.path.join(output_dir, "adapter_config.json"), "w") as f:
-        json.dump(adapter_config, f, indent=2)
+    # with open(os.path.join(output_dir, "adapter_config.json"), "r") as f:
+    #     adapter_config = json.load(f)
+    #     adapter_config["base_model_name_or_path"] = base_model_path+"-bnb-4bit"
+    # with open(os.path.join(output_dir, "adapter_config.json"), "w") as f:
+    #     json.dump(adapter_config, f, indent=2)
 
     logging.info(f"LoRA model saved to {output_dir}")
     return model, tokenizer

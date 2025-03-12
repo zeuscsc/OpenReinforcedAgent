@@ -105,7 +105,7 @@ def get_format_reward(condition, rollout_result):
             continue
         
         # Check if content matches format requirements
-        if '<think>' in content and '</think>' in content:
+        if '</think>' in content:
             num_correct_format += 1
 
     return num_correct_format / num_generated_responses
