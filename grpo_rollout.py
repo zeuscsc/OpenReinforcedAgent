@@ -221,6 +221,16 @@ def parse_rollout(grouped_rollout, rewards_info):
     
     for group, reward_info in zip(grouped_rollout, rewards_info):
         rollouts = group["rollouts"]
+        original_reward_by_function = reward_info["rewards_by_function"]
+        
+        # Store individual metric values for each rollout BEFORE filtering
+        for i in range(len(rollouts)):
+            metrics = { 
+                name: values[i] 
+                for name, values in original_reward_by_function.items()
+            }
+            metrics["std"] = reward_info["std"]
+            all_metrics.append(metrics)
         
         # Filter out rollouts with rewards not all above or below mean
         reward_by_function = reward_info["rewards_by_function"]
@@ -252,15 +262,6 @@ def parse_rollout(grouped_rollout, rewards_info):
         # Store rollout messages
         all_messages.extend(rollouts)
         all_advantages.extend(reward_info["advantages"])
-        
-        # Store individual metric values for each rollout
-        for i in range(len(rollouts)):
-            metrics = {
-                name: values[i] 
-                for name, values in reward_info["rewards_by_function"].items()
-            }
-            metrics["std"] = reward_info["std"]
-            all_metrics.append(metrics)
     
     return {
         'messages': all_messages,
@@ -347,7 +348,7 @@ After planning and reasoning, start your answer or tool calls.
     grouped_rollout = []
     
     num_examples = len(dataset)
-    for i in tqdm(range(0, num_examples)):
+    for i in tqdm(range(0, num_examples), total=num_examples, desc="Running rollouts"):
         example = dataset[i]
         rollout = []
         
