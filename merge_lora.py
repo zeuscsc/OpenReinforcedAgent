@@ -26,27 +26,17 @@ def merge_lora(
         output_path: Where to save the merged model
     """
     logging.info(f"Loading LoRA adapter from {lora_model_path}")
-    model = AutoPeftModelForCausalLM.from_pretrained(
-        pretrained_model_name_or_path=lora_model_path,
-        torch_dtype=torch.bfloat16,
-        #torch_dtype=torch.float16, # awq specific
-    )
-    model.dequantize()
 
-    model.save_pretrained(lora_model_path + '-dequant', save_embedding_layers=False)
-
-    with open(os.path.join(lora_model_path + '-dequant', "adapter_config.json"), "r") as f:
+    with open(os.path.join(lora_model_path, "adapter_config.json"), "r") as f:
         adapter_config = json.load(f)
         adapter_config["base_model_name_or_path"] = base_model
     
-    with open(os.path.join(lora_model_path + '-dequant', "adapter_config.json"), "w") as f:
+    with open(os.path.join(lora_model_path, "adapter_config.json"), "w") as f:
         json.dump(adapter_config, f, indent=2)
 
-    del model
-
     model = AutoPeftModelForCausalLM.from_pretrained(
-        pretrained_model_name_or_path=lora_model_path + '-dequant',
-        torch_dtype=torch.bfloat16
+        pretrained_model_name_or_path=lora_model_path,
+        torch_dtype=torch.bfloat16,
         #torch_dtype=torch.float16, # awq specific
     )
     
