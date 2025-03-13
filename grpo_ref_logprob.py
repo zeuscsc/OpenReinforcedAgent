@@ -8,6 +8,14 @@ import os
 from utils import selective_log_softmax
 from functools import reduce
 
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.bfloat16,
+    # bnb_4bit_quant_storage=torch.uint8,
+    bnb_4bit_quant_storage=torch.bfloat16 # needed for fsdp / ds3
+)
+
 def run_inference(model_path, dataset_path):
     """Run inference on a specific portion of the dataset"""
     logging.basicConfig(level=logging.INFO)
@@ -16,6 +24,7 @@ def run_inference(model_path, dataset_path):
         model_path,
         attn_implementation="flash_attention_2",
         torch_dtype=torch.bfloat16,
+        quantization_config=bnb_config
     ).to('cuda')
     
     # Load dataset

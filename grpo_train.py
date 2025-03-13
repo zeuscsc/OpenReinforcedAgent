@@ -30,7 +30,6 @@ class TrainingManager:
     def __init__(
         self,
         base_model_path: str,
-        base_model_path_quantized: str,
         lora_model_path: str,
         dataset_path: str,
         output_dir: str,
@@ -49,7 +48,6 @@ class TrainingManager:
         max_length: int = 2048,
     ):
         self.base_model_path = base_model_path
-        self.base_model_path_quantized = base_model_path_quantized
         self.lora_model_path = lora_model_path
         self.dataset_path = dataset_path
         self.output_dir = output_dir
@@ -66,6 +64,9 @@ class TrainingManager:
         self.save_steps = save_steps
         self.max_length = max_length
         self.tokenizer = AutoTokenizer.from_pretrained(lora_model_path)
+        
+        # TODO
+        # compute steps per epoch and refresh ref log prob with new model
 
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
@@ -300,7 +301,7 @@ class TrainingManager:
                     checkpoint_path = checkpoint_path + f"/checkpoint-{steps}"
                 # Conversion if needed for FSDP / DS3
                 # Delete the last converted model to conserve space, except for save steps
-                if not ((steps % self.save_steps == 0 and steps != 0) or steps == self.max_steps - 1):
+                if not (steps % self.save_steps == 0 and steps > 0):
                     subprocess.run(f'docker run -v $(pwd):/workspace python bash -c "rm -rf /workspace/vllm-models/vllm-{steps-1} || true"', shell=True, check=True)
                 
                 # Convert the current model into vLLM model
@@ -320,7 +321,7 @@ class TrainingManager:
                     port = 8000 + device
                     self.spawn_vllm_server(
                         device=device,
-                        steps=steps, 
+                        steps=steps,
                         base_model_path=self.base_model_path, 
                         #lora_model_path=checkpoint_path,
                         lora_model_path=os.path.join('vllm-models', f"vllm-{steps}"), 
@@ -438,7 +439,7 @@ class TrainingManager:
                 # 6. Run distributed inference to get reference logprobs
                 for device in range(self.num_devices):
                     device_dataset_path = os.path.join(self.output_dir, f"temp_dataset_{steps}_device_{device}_tokenized")
-                    self.spawn_ref_inference_container(base_model_path=self.base_model_path_quantized, dataset_path=device_dataset_path, device=device)
+                    self.spawn_ref_inference_container(base_model_path=self.base_model_path, dataset_path=device_dataset_path, device=device)
                 
                 while True:
                     all_completed = [not self.check_container_exists(container_name=f"ref-inference-{device}") for device in range(self.num_devices)]
@@ -475,14 +476,13 @@ class TrainingManager:
 if __name__ == "__main__":
     manager = TrainingManager(
         base_model_path="Qwen2.5-7B-Instruct",
-        base_model_path_quantized="Qwen2.5-7B-Instruct-bnb-4bit",
         lora_model_path="Qwen2.5-7B-Instruct-qlora",
         dataset_path="dataset_curated",
         output_dir="Qwen2.5-7B-Instruct-qlora",
         max_steps=100,
-        learning_rate=2e-4,
-        batch_size=32,
-        num_rollouts=32,
+        learning_rate=1e-5,
+        batch_size=16,
+        num_rollouts=64,
         beta=0.04,
         num_devices=2,  # Use 2 GPUs by default
         eval_steps=20,
