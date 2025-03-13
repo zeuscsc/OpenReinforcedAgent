@@ -54,16 +54,16 @@ def create_lora_model(
         torch_dtype=torch.bfloat16,
     )
 
-    model.save_pretrained(base_model_path+"-bnb-4bit")
+    # model.save_pretrained(base_model_path+"-bnb-4bit")
     
-    del model
+    # del model
 
-    model = AutoModelForCausalLM.from_pretrained(base_model_path+"-bnb-4bit")
-    # model = prepare_model_for_kbit_training(model)
+    # model = AutoModelForCausalLM.from_pretrained(base_model_path+"-bnb-4bit")
+    # # model = prepare_model_for_kbit_training(model)
     
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(base_model_path)
-    tokenizer.save_pretrained(base_model_path+"-bnb-4bit")
+    # tokenizer.save_pretrained(base_model_path+"-bnb-4bit")
 
     # Define LoRA Config
     lora_config = LoraConfig(
@@ -103,6 +103,6 @@ def create_lora_model(
 if __name__ == "__main__":
     # Create LoRA version of the model
     model, tokenizer = create_lora_model(
-        base_model_path='/workspace/Qwen2.5-7B-Instruct',
-        output_dir="/workspace/Qwen2.5-7B-Instruct-qlora",
+        base_model_path='/workspace/Qwen2.5-3B-Instruct',
+        output_dir="/workspace/Qwen2.5-3B-Instruct-qlora",
     )

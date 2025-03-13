@@ -134,7 +134,7 @@ class TrainingManager:
                  --load-format bitsandbytes \
                  --gpu-memory-utilization 0.8 \
                  --port {port} \
-                 --max_model_len 2048"""
+                 --max_model_len {self.max_length}"""
 
         try:
             result = subprocess.run(cmd, shell=True, check=True, capture_output=True)
@@ -475,19 +475,19 @@ class TrainingManager:
 
 if __name__ == "__main__":
     manager = TrainingManager(
-        base_model_path="Qwen2.5-7B-Instruct",
-        lora_model_path="Qwen2.5-7B-Instruct-qlora",
+        base_model_path="Qwen2.5-3B-Instruct",
+        lora_model_path="Qwen2.5-3B-Instruct-qlora",
         dataset_path="dataset_curated",
-        output_dir="Qwen2.5-7B-Instruct-qlora",
+        output_dir="Qwen2.5-3B-Instruct-qlora",
         max_steps=100,
         learning_rate=1e-5,
-        batch_size=16,
+        batch_size=8,
         num_rollouts=64,
         beta=0.04,
         num_devices=2,  # Use 2 GPUs by default
         eval_steps=20,
         save_steps=20,
-        max_length=2048,
+        max_length=1024*3,
     )
 
     manager.train(resume_from_step=0)

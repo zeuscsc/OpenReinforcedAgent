@@ -45,7 +45,7 @@ training_outputs
 sentence_transformers
 sft_dataset
 sft_rollout
-Qwen2.5-7B-Instruct*
+Qwen2.5-3B-Instruct*
 dummy_dataset
 peft
 test.ipynb

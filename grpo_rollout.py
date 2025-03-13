@@ -33,13 +33,16 @@ def get_mrr(condition, rollout_result):
     if len(retrieved_ids) == 0:
         return 0.0
     
-    retrieved_ids = [r.split("_chunk_")[0] for r in retrieved_ids[0]]
-    correct_id = condition.get('document_id')
-    
-    if correct_id in retrieved_ids:
-        rank = retrieved_ids.index(correct_id) + 1
-        return 1.0 / rank
-    return 0.0
+    mrr = 0.0
+    for retrieval in retrieved_ids:
+        _retrieval = [r.split("_chunk_")[0] for r in retrieval]
+        correct_id = condition.get('document_id')
+        
+        if correct_id in _retrieval:
+            rank = _retrieval.index(correct_id) + 1
+            if 1.0 / rank > mrr:
+                mrr = 1.0 / rank
+    return mrr
 
 def get_answer_similarity(embedding_function, condition, rollout_result):
     """Calculate semantic similarity between model answer and ground truth.
@@ -366,7 +369,7 @@ After planning and reasoning, start your answer or tool calls.
             ]
             
             error_count = 0
-            for _ in range(3):
+            for _ in range(4):
                 try:
                     if isinstance(messages[-1], ChatCompletionMessage) and messages[-1].tool_calls:
                         messages.append({
