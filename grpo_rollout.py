@@ -94,6 +94,15 @@ def get_format_reward(condition, rollout_result):
         lambda x: x.get('role', None) == 'assistant',
         rollout_result
     ))
+
+    # no tool calls or ipython calls are bad
+    tool_calls = list(filter(
+        lambda x: x.get('role', None) == 'ipython' or x.get('role', None) == 'tool', 
+        rollout_result
+    ))
+
+    if len(tool_calls) == 0:
+        return 0.0
     
     num_generated_responses = len(generated_responses)
 
@@ -208,12 +217,13 @@ def calculate_rewards(condition, rollout_results, reward_functions, weight_schem
         "std": float(np.std(final_rewards))
     }
 
-def parse_rollout(grouped_rollout, rewards_info):
+def parse_rollout(grouped_rollout, rewards_info, filter_by_mean=True):
     """Create a dataset from rollout results and rewards.
     
     Args:
         grouped_results: List of dictionaries containing example data and rollouts
         rewards_info: List of reward information from calculate_rewards
+        filter_by_mean: Boolean indicating whether to filter rollouts by mean reward
         
     Returns:
         Dictionary containing messages, rewards, and metrics
@@ -234,34 +244,36 @@ def parse_rollout(grouped_rollout, rewards_info):
             }
             metrics["std"] = reward_info["std"]
             all_metrics.append(metrics)
-        
-        # # Filter out rollouts with rewards not all above or below mean
-        # reward_by_function = reward_info["rewards_by_function"]
-        # reward_mean = {name: np.mean(values) for name, values in reward_by_function.items()}
-        
-        # # Create a filtered list of rollouts, advantages, and their indices
-        # filtered_rollouts = []
-        # filtered_advantages = []
-        # filtered_indices = []
-        
-        # for i, rollout in enumerate(rollouts):
-        #     # Check if all rewards for this rollout are consistently above or below their respective means
-        #     all_above_mean = all(reward_by_function[name][i] >= reward_mean[name] for name in reward_by_function.keys())
-        #     all_below_mean = all(reward_by_function[name][i] <= reward_mean[name] for name in reward_by_function.keys())
-        #     # Keep rollouts that are consistently above or below mean across all reward functions
-        #     if all_above_mean or all_below_mean:
-        #         filtered_rollouts.append(rollout)
-        #         filtered_advantages.append(reward_info["advantages"][i])
-        #         filtered_indices.append(i)
-        
-        # # Replace original lists with filtered versions
-        # rollouts = filtered_rollouts
-        # reward_info["advantages"] = filtered_advantages
-        
-        # # Filter the rewards_by_function to only include the kept indices
-        # reward_by_function = {name: [reward_by_function[name][i] for i in filtered_indices] for name in reward_by_function.keys()}
-        # reward_info["rewards_by_function"] = reward_by_function
-        
+
+        if filter_by_mean:
+            
+            # Filter out rollouts with rewards not all above or below mean
+            reward_by_function = reward_info["rewards_by_function"]
+            reward_mean = {name: np.mean(values) for name, values in reward_by_function.items()}
+            
+            # Create a filtered list of rollouts, advantages, and their indices
+            filtered_rollouts = []
+            filtered_advantages = []
+            filtered_indices = []
+            
+            for i, rollout in enumerate(rollouts):
+                # Check if all rewards for this rollout are consistently above or below their respective means
+                all_above_mean = all(reward_by_function[name][i] >= reward_mean[name] for name in reward_by_function.keys())
+                all_below_mean = all(reward_by_function[name][i] <= reward_mean[name] for name in reward_by_function.keys())
+                # Keep rollouts that are consistently above or below mean across all reward functions
+                if all_above_mean or all_below_mean:
+                    filtered_rollouts.append(rollout)
+                    filtered_advantages.append(reward_info["advantages"][i])
+                    filtered_indices.append(i)
+            
+            # Replace original lists with filtered versions
+            rollouts = filtered_rollouts
+            reward_info["advantages"] = filtered_advantages
+            
+            # Filter the rewards_by_function to only include the kept indices
+            reward_by_function = {name: [reward_by_function[name][i] for i in filtered_indices] for name in reward_by_function.keys()}
+            reward_info["rewards_by_function"] = reward_by_function
+            
         # Store rollout messages
         all_messages.extend(rollouts)
         all_advantages.extend(reward_info["advantages"])
@@ -369,7 +381,7 @@ After planning and reasoning, start your answer or tool calls.
             ]
             
             error_count = 0
-            for _ in range(4):
+            for _ in range(2):
                 try:
                     if isinstance(messages[-1], ChatCompletionMessage) and messages[-1].tool_calls:
                         messages.append({
