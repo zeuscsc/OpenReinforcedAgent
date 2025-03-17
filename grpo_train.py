@@ -477,7 +477,6 @@ if __name__ == "__main__":
     from models_paths_config import BASE_MODEL_PATH, BASE_MODEL_PATH_QUANTIZED, LORA_MODEL_PATH, OUTPUT_DIR
     manager = TrainingManager(
         base_model_path=BASE_MODEL_PATH,
-        base_model_path_quantized=BASE_MODEL_PATH_QUANTIZED,
         lora_model_path=LORA_MODEL_PATH,
         dataset_path="dataset_curated",
         output_dir=OUTPUT_DIR,
