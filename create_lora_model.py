@@ -54,16 +54,16 @@ def create_lora_model(
         torch_dtype=torch.bfloat16,
     )
 
-    model.save_pretrained(base_model_path+"-bnb-4bit")
+    # model.save_pretrained(base_model_path+"-bnb-4bit")
     
-    del model
+    # del model
 
-    model = AutoModelForCausalLM.from_pretrained(base_model_path+"-bnb-4bit")
-    # model = prepare_model_for_kbit_training(model)
+    # model = AutoModelForCausalLM.from_pretrained(base_model_path+"-bnb-4bit")
+    # # model = prepare_model_for_kbit_training(model)
     
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(base_model_path)
-    tokenizer.save_pretrained(base_model_path+"-bnb-4bit")
+    # tokenizer.save_pretrained(base_model_path+"-bnb-4bit")
 
     # Define LoRA Config
     lora_config = LoraConfig(
@@ -91,11 +91,11 @@ def create_lora_model(
     tokenizer.save_pretrained(output_dir)
     
     # modify adapter config
-    with open(os.path.join(output_dir, "adapter_config.json"), "r") as f:
-        adapter_config = json.load(f)
-        adapter_config["base_model_name_or_path"] = base_model_path+"-bnb-4bit"
-    with open(os.path.join(output_dir, "adapter_config.json"), "w") as f:
-        json.dump(adapter_config, f, indent=2)
+    # with open(os.path.join(output_dir, "adapter_config.json"), "r") as f:
+    #     adapter_config = json.load(f)
+    #     adapter_config["base_model_name_or_path"] = base_model_path+"-bnb-4bit"
+    # with open(os.path.join(output_dir, "adapter_config.json"), "w") as f:
+    #     json.dump(adapter_config, f, indent=2)
 
     logging.info(f"LoRA model saved to {output_dir}")
     return model, tokenizer

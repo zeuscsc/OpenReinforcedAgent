@@ -146,7 +146,10 @@ if __name__ == "__main__":
     datasets = [load_from_disk(dataset_path) for dataset_path in args.dataset_paths]
     # Concat datasets
     dataset = concatenate_datasets(datasets)
-    
+    if len(dataset) % PartialState().num_processes != 0:
+        # Drop last few examples
+        dataset = dataset.select(range(len(dataset) - (len(dataset) % PartialState().num_processes)))
+
     if 'checkpoint' in args.checkpoint_path:
         output_path = args.checkpoint_path.split('checkpoint-')[0]
         current_step = int(args.checkpoint_path.split('checkpoint-')[1])
